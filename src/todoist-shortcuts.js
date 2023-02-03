@@ -2,10 +2,13 @@
 
 (function() {
   // Set this to true to get more log output.
-  const DEBUG = true;
+  const DEBUG = false;
 
   const IS_CHROME =
     /Chrom/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+
+  const IS_SAFARI =
+    /Safari/.test(navigator.userAgent) && /Apple/.test(navigator.vendor);
 
   // Cursor navigation.
   //
@@ -29,6 +32,8 @@
     // Navigation
     ['g', navigate],
     ['G', navigateToTask],
+    ['`', nextLeftMenuItem],
+    ['shift+`', prevLeftMenuItem],
 
     // Manipulation of tasks at cursor
     [['e','enter'], edit],
@@ -457,8 +462,8 @@
 
   // Follow the first link of the task under the cursor.
   function followLink() {
-    const classes = ['content', 'task_content'];
-    withUniqueClass(requireCursor(), classes, all, (content) => {
+    const contentClass = 'task_list_item__content';
+    withUniqueClass(requireCursor(), contentClass, all, (content) => {
       const link = getFirstTag(content, 'a');
       if (link) {
         if (IS_CHROME) {
@@ -679,6 +684,54 @@
     }
   }
 
+  // Clicks 'Move to project' for the selection, and moves to the
+  // named project.
+  // eslint-disable-next-line no-unused-vars
+  function moveToProjectNamed(projectName) {
+    return () => {
+      const mutateCursor = getCursorToMutate();
+      if (mutateCursor) {
+        clickTaskMenu(
+            mutateCursor,
+            'task-overflow-menu-move-to-project',
+            false);
+        withUniqueClass(
+            document,
+            'popper',
+            hasChild('[aria-label="'+projectName+'"]'),
+            (menu) => {
+              withUniqueTag(
+                  menu,
+                  'li',
+                  matchingAttr('aria-label', projectName),
+                  click);
+            });
+        if (inBulkMoveMode) {
+          bulkMoveCursorChanged();
+        }
+      } else {
+        withUnique(
+            document,
+            'button[data-action-hint="multi-select-toolbar-project-picker"]',
+            (menu) => {
+              click(menu);
+              withUniqueClass(
+                  document,
+                  'popper',
+                  hasChild('[aria-label="'+projectName+'"]'),
+                  (menu) => {
+                    withUniqueTag(
+                        menu,
+                        'li',
+                        matchingAttr('aria-label', projectName),
+                        click);
+                  });
+            },
+        );
+      }
+    };
+  }
+
   // Sets the priority of the selected tasks to the specified level. If
   // WHAT_CURSOR_APPLIES_TO is 'all' or 'most', then instead applies to the
   // cursor if there is no selection.
@@ -690,7 +743,9 @@
       const mutateCursor = getCursorToMutate();
       if (mutateCursor) {
         clickTaskEdit(mutateCursor);
-        withUniqueClass(document, 'item_actions_priority', all, click);
+        withQuery(document,
+            '[data-action-hint="task-actions-priority-picker"]',
+            click);
         withUniqueClass(document, 'popper', all, (menu) => {
           clickPriorityMenu(menu, level);
         });
@@ -968,16 +1023,24 @@
 
   // Open assign dialog
   function openAssign() {
-    const cursor = requireCursor();
-    withTaskHovered(cursor, () => {
-      const assignButton =
-            getUniqueClass(cursor, 'task_list_item__person_picker');
-      if (assignButton) {
-        click(assignButton);
-      } else {
-        info('Could not find assign button, maybe project not shared?');
-      }
-    });
+    const mutateCursor = getCursorToMutate();
+    if (mutateCursor) {
+      withTaskHovered(mutateCursor, () => {
+        const assignButton =
+              getUniqueClass(mutateCursor, 'task_list_item__person_picker');
+        if (assignButton) {
+          click(assignButton);
+        } else {
+          info('Could not find assign button, maybe project not shared?');
+        }
+      });
+    } else {
+      withUnique(
+          openMoreMenu(),
+          'li[data-action-hint="multi-select-toolbar-overflow-menu-asssign"]',
+          click,
+      );
+    }
   }
 
   // Open the task view sidepane.
@@ -1096,6 +1159,94 @@
         error('couldn\'t find project button');
       }
     }
+  }
+
+  // Navigate to left menu item based on ID (`today`, `upcoming`, etc).
+  // eslint-disable-next-line no-unused-vars
+  function navigateToLeftMenuItem(itemId) {
+    return () => {
+      const sections = ['top', 'favorites', 'projects'];
+      withLeftMenuItems(sections, (menuItems, current) => {
+        for (const menuItem of menuItems) {
+          if (menuItem.href.indexOf(itemId) > 0) {
+            click(menuItem);
+          }
+        }
+      });
+    };
+  }
+
+  // Cycles down through menu items.
+  function nextLeftMenuItem() {
+    withLeftMenuItems((menuItems, current) => {
+      // If on the last item, or no item, select the first item.
+      if (current >= menuItems.length - 1 || current < 0) {
+        menuItems[0].click();
+      // Otherwise, select the next item.
+      } else {
+        menuItems[current + 1].click();
+      }
+    });
+  }
+
+  // Cycles up through top sections (inbox / today / next 7 days + favorites).
+  function prevLeftMenuItem() {
+    withLeftMenuItems((menuItems, current) => {
+      // If on the first item, or no item, select the last item.
+      if (current <= 0) {
+        menuItems[menuItems.length - 1].click();
+      // Otherwise, select the previous item.
+      } else {
+        menuItems[current - 1].click();
+      }
+    });
+  }
+
+  // Run a function on the array of left menu items, along with the index of the
+  // currently selected one, if any.
+  function withLeftMenuItems(f) {
+    withId('top-menu', (topItems) => {
+      const favoritesPanel =
+            withId('left-menu-favorites-panel', (panel) => { return panel; });
+      const projectsPanel =
+            withId('left-menu-projects-panel', (panel) => { return panel; });
+      withLeftMenuItemLinks([topItems, favoritesPanel, projectsPanel], f);
+    });
+  }
+
+  function withLeftMenuItemLinks(containers, f) {
+    const links = [];
+    let current = -1;
+    const allCurrents = [];
+    for (const container of containers) {
+      withTag(container, 'li', (item) => {
+        const link =
+              getFirstClass(item, 'item_content') ||
+              getFirstTag(item, 'a') ||
+              getFirstClass(item, 'name');
+        if (hidden(item)) {
+        } else if (!link) {
+          warn('Didn\'t find link in', item.innerHTML);
+        } else {
+          links.push(link);
+          const firstChild = item.firstElementChild;
+          // Terrible hack around obfuscated class names.
+          if (matchingClass('current')(item) ||
+              (firstChild.tagName === 'DIV' &&
+               !firstChild.classList.contains('arrow') &&
+               firstChild.classList.length >= 6)) {
+            if (!allCurrents.length) {
+              current = links.length - 1;
+            }
+            allCurrents.push(item.innerHTML);
+          }
+        }
+      });
+    }
+    if (allCurrents.length > 1) {
+      warn('Multiple current menu items: ', allCurrents);
+    }
+    f(links, current);
   }
 
   // Clicks quick add task button.  Would be better to use todoist's builtin
@@ -2058,7 +2209,7 @@
   // DOM.  Run on initialization of todoist-shortcuts.
   function registerTopMutationObservers(content) {
     registerMutationObserver(content, handlePageChange);
-    registerMutationObserver(content, (mutations) => {
+    registerMutationObserver(document, (mutations) => {
       // Not sure how to do this at intelligent times. Instead doing
       // it all the time.
       //
@@ -2090,8 +2241,9 @@
         return true;
       });
       if (filtered.length > 0) {
-        debug('ensuring cursor due to mutations:', mutations);
+        debug('ensuring cursor + updating keymap due to mutations:', mutations);
         ensureCursor(content);
+        updateKeymap();
       }
     }, {childList: true, subtree: true});
     registerMutationObserver(document.body, handleBodyChange);
@@ -2099,7 +2251,6 @@
 
   function handleBodyChange() {
     let nextTask;
-    updateKeymap();
     if (inBulkScheduleMode) {
       if (!checkSchedulerOpen()) {
         if (nextBulkScheduleKey) {
@@ -2161,7 +2312,9 @@
       }
       const popupWindow =
             getUniqueClass(document, 'GB_window') ||
-            selectUnique(document, '[data-testid="modal-overlay"]');
+            selectUnique(document, '[data-testid="modal-overlay"]') ||
+            // Search dropdown
+            selectUnique(document, '#quick_find > [role="presentation"]');
       if (popupWindow) {
         switchKeymap(POPUP_KEYMAP);
         return;
@@ -2720,7 +2873,11 @@
 
   function blurSchedulerInput() {
     enterDeferLastBinding();
-    setTimeout(() => blurSchedulerInputImpl(20), 0);
+    if (IS_SAFARI) {
+      setTimeout(() => blurSchedulerInputImpl(50), 20);
+    } else {
+      setTimeout(() => blurSchedulerInputImpl(50), 0);
+    }
   }
 
   function blurSchedulerInputImpl(fuel) {
@@ -2731,16 +2888,17 @@
     }
     const scheduler = findScheduler();
     if (scheduler) {
-      try {
-        withTag(scheduler, 'input', (el) => {
-          el.blur();
-        });
-      } finally {
-        exitDeferLastBinding();
+      const schedulerInput = selectUnique(scheduler, 'input');
+      if (schedulerInput && schedulerInput === document.activeElement) {
+        try {
+          schedulerInput.blur();
+        } finally {
+          exitDeferLastBinding();
+        }
+        return;
       }
-    } else {
-      setTimeout(() => blurSchedulerInputImpl(fuel - 1), 10);
     }
+    setTimeout(() => blurSchedulerInputImpl(fuel - 1), 10);
   }
 
   function focusTimeInput() {
@@ -3301,6 +3459,8 @@
           mustBeKeys = 'g';
         } else if (matchingAttr('data-track', 'navigation|upcoming')(li)) {
           mustBeKeys = 'n';
+        } else if (matchingAttr('data-track', 'navigation|completed')(li)) {
+          mustBeKeys = 'co';
         } else {
           nameSpan = getUniqueClass(li, 'simple_content');
           if (!nameSpan) {
