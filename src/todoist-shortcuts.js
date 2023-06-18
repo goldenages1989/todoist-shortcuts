@@ -72,6 +72,7 @@
     [['d', '#'], deleteTasks],
     ['&', duplicateTasks],
     ['f', moveToProject],
+    ['b', moveToProjectNamed('Agency')],
     [['y', '@'], openLabelMenu],
     ['1', setPriority('4')],
     ['2', setPriority('3')],
@@ -127,7 +128,6 @@
   const SCHEDULE_BINDINGS = [].concat(SCHEDULE_CURSOR_BINDINGS, [
     ['c', scheduleToday],
     ['t', scheduleTomorrow],
-    ['w', scheduleNextWeek],
     ['n', scheduleNextWeekend],
     ['m', scheduleNextMonth],
     [['s', 'p'], schedulePostpone],
