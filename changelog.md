@@ -1,5 +1,70 @@
 # todoist-shortcuts changelog
 
+## Version 178
+
+### Fixes ###
+
+* Fixes undo keyboard shortcut. Unfortunately, Todoist's DOM for this
+  is quite obtuse now, and so now the undo shortcut may also click
+  some other buttons, but I think these are benign clicks (like
+  opening a task after creating it). See [#243][]
+
+* Fixes expand / collapse shortcuts due to changes in Todoist DOM. See
+  [#244][].
+
+[#243]: https://github.com/mgsloan/todoist-shortcuts/issues/243
+[#244]: https://github.com/mgsloan/todoist-shortcuts/issues/244
+
+
+## Version 177
+
+* Improves keyboard shorcuts for navigating open menus.  Specifically,
+  adds `j` or `down` keys in addition to the existing `tab` as well as
+  `k` or `up` keys in addition to `shift+tab`.
+
+
+## Version 176
+
+### Enhancements ###
+
+* Changes `shift+p` to instead open current project left nav menu.
+
+* Adds `w` keybinding, matching the native shortcut, to open the
+  current view's "more actions" menu.
+
+### Fixes ###
+
+* Fixes `!` keybinding for opening notifications.
+
+
+## Version 175
+
+### Enhancements ###
+
+* Adds `shift+p` shortcut for adding a project above current
+  project. Thanks to contribution from [@kory-smith][] in [#240][]!
+
+### Fixes ###
+
+* Undo (`u`) seems to no longer work by simulating a keypress of
+  Todoist's native shortcut, so switched back to pressing the button
+  in the UI. The downside of this is that it doesn't work after the
+  undo button disappears.
+
+[#240]: https://github.com/mgsloan/todoist-shortcuts/issues/240
+[@kory-smith]: https://github.com/kory-smith
+
+
+## Version 174
+
+### Fixes ###
+
+* Fixes another instance of issues with setting priority of a single
+  task, broken only in experimental Todoist mode. See [#238][]
+
+[#238]: https://github.com/mgsloan/todoist-shortcuts/issues/238
+
+
 ## Version 173
 
 ### Enhancements ###
@@ -27,7 +92,7 @@
 
 [#236]: https://github.com/mgsloan/todoist-shortcuts/issues/236
 [#237]: https://github.com/mgsloan/todoist-shortcuts/issues/237
-[#239]: https://github.com/mgsloan/todoist-shortcuts/issues/237
+[#239]: https://github.com/mgsloan/todoist-shortcuts/issues/239
 
 
 ## Version 172

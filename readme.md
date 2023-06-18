@@ -248,6 +248,21 @@ Listed here for completeness:
 | `#`               | delete                                                                    |
 | `shift+c`         | clicks [toggl-button (time tracking integration extension)][toggl-button] |
 
+## Menus
+
+| keys                   | action                                                 |
+|------------------------|--------------------------------------------------------|
+| `w`                    | open 'more actions' menu for current view              |
+| `shift+p`              | open left nav menu for current project                 |
+
+Once a menu is open, the following shortcuts can be used to interact with it:
+
+| keys                       | action                   |
+|----------------------------|--------------------------|
+| `j` or `down` or `tab`     | focus next menu item     |
+| `k` or `up` or `shift+tab` | focus previous menu item |
+| `enter` or `space`         | select current menu item |
+
 ## Other
 
 | keys                   | action                                                 |

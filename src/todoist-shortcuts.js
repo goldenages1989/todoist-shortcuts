@@ -79,6 +79,9 @@
     [['4', '0'], setPriority('1')],
     //['shift+c', toggleTimer],
 
+    // Projects
+    ['shift+p', openCurrentProjectLeftNavMenu],
+
     // Sorting
     ['s', sortByDate],
     ['p', sortByPriority],
@@ -104,6 +107,7 @@
     ['c', copyCursorOrSelectedTitles],
     ['ctrl+c', copyCursorOrSelectedAsMarkdown],
     ['ctrl+shift+/', openRandomTask],
+    ['w', openMoreActionsMenu],
 
     // See https://github.com/mgsloan/todoist-shortcuts/issues/30
     // [???, importFromTemplate],
@@ -186,6 +190,13 @@
     }],
   ];
   const TASK_VIEW_KEYMAP = 'task_view';
+
+  const MENU_LIST_BINDINGS = [
+    [['j', 'down', 'tab'], nextMenuListItem],
+    [['k', 'up', 'shift+tab'], prevMenuListItem],
+    [['enter', 'space'], selectMenuListItem],
+  ];
+  const MENU_LIST_KEYMAP = 'menu_list';
 
   // Keycode constants
   const LEFT_ARROW_KEYCODE = 37;
@@ -746,7 +757,7 @@
         withQuery(document,
             '[data-action-hint="task-actions-priority-picker"]',
             click);
-        withUniqueClass(document, 'popper', all, (menu) => {
+        withUniqueClass(document, 'priority_picker', all, (menu) => {
           clickPriorityMenu(menu, level);
         });
         // Click save button.
@@ -866,7 +877,10 @@
 
   // Toggles collapse / expand of a task, if it has children.
   function toggleCollapse(task) {
-    withUniqueClass(task ? task : requireCursor(), 'arrow', all, click);
+    withUnique(
+      task ? task : requireCursor(),
+      '[data-action-hint=task-toggle-collapse]',
+      click);
   }
 
   // Collapse cursor. If it is already collapsed, select and collapse parent.
@@ -1088,6 +1102,59 @@
     withClass(document, 'ts-modal-close', click);
   }
 
+  function openMoreActionsMenu() {
+    withUniqueClass(document, 'view_header__actions', all, (header) => {
+      for (const button of selectAll(header, 'button')) {
+        // If it contains 3 svg circles, it's the more menu
+        // button. Sad that there is no other identifying
+        // characteristic in the dom.
+        if (selectAll(button, 'circle').length == 3) {
+          click(button);
+          return;
+        }
+      }
+      throw new Error('Failed to find more actions menu');
+    });
+  }
+
+  function openCurrentProjectLeftNavMenu() {
+    if (leftNavIsHidden()) {
+      toggleLeftNav();
+    }
+    const currentPath = document.location.pathname;
+    const currentProject = selectUnique(
+        document, '#left-menu-projects-panel li', (project) => {
+          const link = selectUnique(project, 'a');
+          // If a project doesn't have an anchor tag, it's hidden and
+          // we want to skip it.
+          return link && link.href.endsWith(currentPath);
+        });
+    if (!currentProject) {
+      throw new Error('Could not find current project.');
+    }
+    const projectButtons = selectAll(currentProject, 'button');
+    let moreProjectActionsButton = null;
+    switch (projectButtons.length) {
+      case 1:
+        moreProjectActionsButton = projectButtons[0];
+        break;
+      case 2:
+        // If a project has two buttons, the first is the "toggle
+        // collapse" button and the second is the "more actions"
+        // button.
+        moreProjectActionsButton = projectButtons[1];
+        break;
+      case 0:
+        throw new Error(
+            'Project element has no buttons (expected "more actions" button.');
+      default:
+        throw new Error(
+            'Project element has more than two buttons, which is unexpected.');
+    }
+    click(moreProjectActionsButton);
+    setTimeout(updateKeymap, 10);
+  }
+
   // Switches to a navigation mode, where navigation targets are annotated
   // with letters to press to click.
   function navigate() {
@@ -1262,7 +1329,25 @@
 
   // Trigger undo by simulating a keypress.
   function undo() {
-    todoistShortcut({key: 'z'});
+    // Triggering native shortcut no longer seems to be working, so instead
+    // clicking the undo button. The main downside of this is that it only
+    // works if the undo button is visible.
+    //
+    // todoistShortcut({key: 'z'});
+    withUnique(document, '[role=alert]', (alertContainer) => {
+      let undoButton = null;
+      for (button of selectAll(alertContainer, ' button')) {
+        if (button.querySelector('svg') === null) {
+          if (undoButton !== null) {
+            throw new Error('Multiple buttons in alert might be undo button');
+          }
+          undoButton = button;
+        }
+      }
+      if (undoButton) {
+        click(undoButton);
+      }
+    });
   }
 
   function sortByDate() {
@@ -1331,7 +1416,7 @@
   }
 
   function openNotifications() {
-    withUnique(document, '.top_bar_btn.notifications_btn', click);
+    withUnique(document, '[aria-owns="notification_popup"]', click);
   }
 
   function quickAdd() {
@@ -1609,6 +1694,36 @@
     const tasks = getTasks();
     setCursor(tasks[Math.floor(Math.random()*tasks.length)], 'scroll');
     openTaskView();
+  }
+
+  function nextMenuListItem() {
+    withCurrentFocusedMenuListItem((focusedItem) => {
+      let item = focusedItem;
+      do {
+        item = item.nextElementSibling;
+      } while (item && !item.classList.contains('menu_item'));
+      if (!item) {
+        item = focusedItem.parentElement.firstElementChild;
+      }
+      item.focus();
+    });
+  }
+
+  function prevMenuListItem() {
+    withCurrentFocusedMenuListItem((focusedItem) => {
+      let item = focusedItem;
+      do {
+        item = item.previousElementSibling;
+      } while (item && !item.classList.contains('menu_item'));
+      if (!item) {
+        item = focusedItem.parentElement.lastElementChild;
+      }
+      item.focus();
+    });
+  }
+
+  function selectMenuListItem() {
+    withCurrentFocusedMenuListItem(click);
   }
 
   /*****************************************************************************
@@ -2294,6 +2409,10 @@
       if (currentKeymap === NAVIGATE_KEYMAP) {
         return;
       }
+      if (getCurrentFocusedMenuListItem()) {
+        switchKeymap(MENU_LIST_KEYMAP);
+        return;
+      }
       if (inBulkScheduleMode) {
         switchKeymap(BULK_SCHEDULE_KEYMAP);
         return;
@@ -2469,6 +2588,7 @@
   }
 
   // Simulate a key press with todoist's global handlers.
+  // eslint-disable-next-line no-unused-vars
   function todoistShortcut(options0) {
     const options = typeof options0 === 'string' ? {key: options0} : options0;
     let ev = new Event('keydown');
@@ -4283,8 +4403,8 @@
   }
 
   // Uses querySelectorAll, but requires a unique result.
-  function selectUnique(parent, query) {
-    return findUnique(all, selectAll(parent, query));
+  function selectUnique(parent, query, predicate) {
+    return findUnique(predicate, selectAll(parent, query));
   }
 
   // Users querySelectorAll, requires unique result, and applies the
@@ -5046,6 +5166,23 @@
     return result;
   }
 
+  function withCurrentFocusedMenuListItem(f) {
+    const item = getCurrentFocusedMenuListItem();
+    if (item === null) {
+      warn('Expected to find a focused menu list, but found none.');
+    }
+    f(item);
+  }
+
+  function getCurrentFocusedMenuListItem() {
+    const item = document.activeElement;
+    const parent = item.parentElement;
+    if (parent && parent.classList.contains('item_menu_list')) {
+      return item;
+    }
+    return null;
+  }
+
   function todoistModalIsOpen() {
     const modal =
           document.getElementsByClassName('reactist_modal_box').item(0);
@@ -5199,6 +5336,7 @@
     registerKeybindings(NAVIGATE_KEYMAP, NAVIGATE_BINDINGS);
     registerKeybindings(POPUP_KEYMAP, POPUP_BINDINGS);
     registerKeybindings(TASK_VIEW_KEYMAP, TASK_VIEW_BINDINGS);
+    registerKeybindings(MENU_LIST_KEYMAP, MENU_LIST_BINDINGS);
 
     // Update the keymap.  Necessary now that the side panel can start
     // out visible.
