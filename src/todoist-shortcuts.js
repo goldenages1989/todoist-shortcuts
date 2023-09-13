@@ -3006,18 +3006,17 @@
       error('Expected to find scheduler after opening it.');
       return;
     }
-    const scheduler = findScheduler();
-    if (scheduler) {
-      const schedulerInput = selectUnique(scheduler, 'input');
-      if (schedulerInput && schedulerInput === document.activeElement) {
-        try {
-          schedulerInput.blur();
-        } finally {
-          exitDeferLastBinding();
-        }
+
+    const focusedEl = document.activeElement;
+    if (focusedEl && findParent(focusedEl, matchingClass('scheduler'))) {
+      try {
+        focusedEl.blur();
         return;
+      } finally {
+        exitDeferLastBinding();
       }
     }
+
     setTimeout(() => blurSchedulerInputImpl(fuel - 1), 10);
   }
 
@@ -3582,32 +3581,10 @@
         } else if (matchingAttr('data-track', 'navigation|completed')(li)) {
           mustBeKeys = 'co';
         } else {
-          nameSpan = getUniqueClass(li, 'simple_content');
-          if (!nameSpan) {
-            nameSpan = getUniqueClass(li, 'name');
-            if (nameSpan) {
-              nameSpan = getUniqueChild(nameSpan, matchingTag('span'));
-            }
-          }
-          if (!nameSpan) {
-            // Handle new favorites DOM.
-            const link = getFirstTag(li, 'a');
-            if (link) {
-              const spanChildren = link.querySelectorAll(':scope > span');
-              if (spanChildren.length > 0) {
-                nameSpan = spanChildren[spanChildren.length - 1];
-              }
-            }
-          }
-          if (!nameSpan) {
-            nameSpan = getUniqueClass(li, 'item_content');
-            if (nameSpan) {
-              warn('Fell back to using .item_content for ', li);
-            }
-          }
-          if (nameSpan) {
-            txt = preprocessItemText(nameSpan.textContent);
-            initials = getItemInitials(nameSpan.textContent);
+          const rawText = getNavItemText(li).split('\n')[0];
+          if (rawText.length > 0) {
+            txt = preprocessItemText(rawText);
+            initials = getItemInitials(rawText);
           } else {
             warn('failed to get nav link text for', li);
           }
@@ -3735,6 +3712,17 @@
       }
     }
     return renderedAny;
+  }
+
+  function getNavItemText(li) {
+    // Similar to li.innerText but skips divs inserted by todoist-shortcuts
+    let result = '';
+    for (const child of li.children) {
+      if (!child.classList.contains(TODOIST_SHORTCUTS_TIP)) {
+        result += child.innerText;
+      }
+    }
+    return result;
   }
 
   // Lowercase and take only alphanumeric.
@@ -4905,8 +4893,10 @@
     '',
     '.' + TODOIST_SHORTCUTS_TIP + ' {',
     '  position: absolute;',
-    '  margin-top: 5px;',
+    '  margin-top: 4px;',
     '  margin-left: -18px;',
+    '  padding: 2px;',
+    '  border-radius: 5px;',
     '  width: 22px;',
     '  font-family: monospace;',
     '  font-weight: normal;',
