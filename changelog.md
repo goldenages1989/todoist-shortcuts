@@ -1,5 +1,54 @@
 # todoist-shortcuts changelog
 
+## Version 183
+
+### Fixes ###
+
+* Fixes `g` navigate shortcut opening of left sidebar.
+
+
+## Version 182
+
+### Fixes ###
+
+* Fixes `q` quick-add shortcut with new UI design.
+
+
+## Version 181
+
+### Fixes ###
+
+* Fixes functioning with new UI design (only currently on if you
+  enable "Experimental features" in advanced settings). See [#254][].
+
+### Enhancements ###
+
+* Notifies user of a couple known breakages - sorting and popup
+  closing bindings.
+
+[#254]: https://github.com/mgsloan/todoist-shortcuts/issues/254
+
+
+## Version 180
+
+### Fixes ###
+
+* Fixes `/` / `f` keybinding for opening search. See [#251][].
+
+* Has `j` / `k` / `up` / `down` keys do nothing in scheduler
+  mode. Previously they would cause the scheduler to get duplicates
+  for unknown reasons. See [#252][].
+
+### Enhancements ###
+
+* Adds `taskViewActivity` function (but no keybinding) for opening
+  activity from task view. See [#247][].
+
+[#251]: https://github.com/mgsloan/todoist-shortcuts/issues/251
+[#252]: https://github.com/mgsloan/todoist-shortcuts/issues/252
+[#247]: https://github.com/mgsloan/todoist-shortcuts/issues/247
+
+
 ## Version 179
 
 ### Fixes ###

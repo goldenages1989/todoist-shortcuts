@@ -146,6 +146,8 @@
     ['shift+t', scheduleText],
     ['escape', closeContextMenus],
     ['fallback', schedulerFallback],
+    // See #252 for why these are disabled.
+    [['j', 'k', 'up', 'down'], noop],
   ]);
   const SCHEDULE_KEYMAP = 'schedule';
 
@@ -1079,6 +1081,7 @@
       }
       if (i == 99) {
         warn('Tried a lot to close poppers.');
+        notifyUser('Closing popups is currently broken. Hopefully fixed soon!');
       }
     }
     click(document.body);
@@ -1160,6 +1163,10 @@
   function navigate() {
     withNavigationContainer((listHolder) => {
       openedLeftNavForNavigate = false;
+      if (leftNavIsHidden()) {
+        toggleLeftNav();
+        openedLeftNavForNavigate = true;
+      }
       // Since the projects list can get reconstructed, watch for changes and
       // reconstruct the shortcut tips.  A function to unregister the mutation
       // observer is passed in.
@@ -1181,7 +1188,7 @@
   }
 
   function withNavigationContainer(f) {
-    withQuery(document, '#left_menu,#list_holder', f);
+    withUnique(document, '[role=navigation]', f);
   }
 
   // When viewing something other than a project, and the current task has a
@@ -1351,13 +1358,18 @@
   }
 
   function sortByDate() {
+    sortingCurrentlyBroken();
+    /*
     if (resetIfSortTypeAlready('date')) return;
     openSortMenu();
     withUnique(document, 'li[data-value="DUE_DATE"]', click);
     closeContextMenus();
+    */
   }
 
   function sortByPriority() {
+    sortingCurrentlyBroken();
+    /*
     if (resetIfSortTypeAlready('priority')) return;
     openSortMenu();
     withUnique(document, 'li[data-value="PRIORITY"]', click);
@@ -1368,22 +1380,35 @@
         click);
     withUnique(document, 'li[data-value="DESC"]', click);
     closeContextMenus();
+    */
   }
 
   function sortByName() {
+    sortingCurrentlyBroken();
+    /*
     if (resetIfSortTypeAlready('alphabetically')) return;
     openSortMenu();
     withUnique(document, 'li[data-value="ALPHABETICALLY"]', click);
     closeContextMenus();
+    */
   }
 
   function sortByAssignee() {
+    sortingCurrentlyBroken();
+    /*
     if (resetIfSortTypeAlready('assignee')) return;
     openSortMenu();
     withUnique(document, 'li[data-value="ASSIGNEE"]', click);
     closeContextMenus();
+    */
   }
 
+  function sortingCurrentlyBroken() {
+    notifyUser(
+        'Sort keybindings are currently not working. Hopefully fixed soon!');
+  }
+
+  /*
   function resetIfSortTypeAlready(type) {
     const changeSortButton = selectUnique(
         document, 'button[aria-label="Change sorting options"]');
@@ -1414,25 +1439,44 @@
         matchingAttr('aria-labelledby', 'view_menu__sort_by'),
         click);
   }
+  */
 
   function openNotifications() {
     withUnique(document, '[aria-owns="notification_popup"]', click);
   }
 
   function quickAdd() {
-    withId('quick_add_task_holder', click);
+    withUnique(document, 'button[data-track="navigation|quick_add"]', click);
   }
 
   function leftNavIsHidden() {
-    return document.documentElement.classList.contains('left_menu_hide');
+    if (document.documentElement.classList.contains('left_menu_hide')) {
+      return true;
+    }
+    const appSidebar = getUniqueClass(document, 'app-sidebar-container');
+    if (appSidebar) {
+      return appSidebar.computedStyleMap().get('margin-left').value != 0;
+    }
+    warn('Couldn\'t figure out if left nav is open or not.');
   }
 
   function toggleLeftNav() {
-    withUnique(document, '.top_bar_btn.left_menu_toggle ', click);
+    withUnique(
+        document,
+        'button[aria-controls=sidebar], .top_bar_btn.left_menu_toggle',
+        click);
   }
 
   function focusSearch() {
-    withUniqueClass(document, 'quick_find__input', all, (el) => el.focus());
+    // TODO: remove once gone
+    const quickFind = getById('quick_find');
+    if (quickFind) {
+      click(quickFind);
+      return;
+    }
+
+    // TODO: does it work in other UI languages?
+    withUnique(document, 'nav a[aria-label=Search]', click);
   }
 
   // Open help documentation.
@@ -1658,6 +1702,13 @@
     });
   }
 
+  // eslint-disable-next-line no-unused-vars
+  function taskViewActivity() {
+    withTaskViewMoreMenu((menu) => {
+      withUniqueTag(menu, 'div', matchingText('View task activity'), click);
+    });
+  }
+
   function withTaskViewMoreMenu(f) {
     withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
       let overflowMenu = getTaskViewMoreMenu();
@@ -1725,6 +1776,8 @@
   function selectMenuListItem() {
     withCurrentFocusedMenuListItem(click);
   }
+
+  function noop() {}
 
   /*****************************************************************************
   * Bulk schedule
@@ -1855,6 +1908,15 @@
   /*****************************************************************************
    * Utilities for manipulating the UI
    */
+
+  function getViewContent() {
+    // If current experimental UI launches #content will no longer exist.
+    return selectUnique(document, 'main');
+  }
+
+  function withViewContent(f) {
+    return withUnique(document, 'main', f);
+  }
 
   function toggleSelectTask(task) {
     // Control click toggles selection state.
@@ -2044,9 +2106,7 @@
   // doesn't exist, then use previously stored info to place it after its prior
   // location.
   function ensureCursor(content) {
-    if (!content) {
-      content = getById('content');
-    }
+    content = content || getViewContent();
     // If there's an editor open to add a task, then set the cursor to the item
     // above.
     const manager = getUniqueClass(content, 'manager');
@@ -2509,7 +2569,7 @@
   // Persistently clicks until the class can no longer be found. Used to
   // collapse / expand all items.
   function repeatedlyClickArrows(cls) {
-    withId('content', (content) => {
+    withViewContent((content) => {
       let i = 0;
       let clickedSomething = false;
       const doClick = (el) => {
@@ -3170,8 +3230,15 @@
         menu, 'li', matchingAction('task-actions-priority-' + level), click);
   }
 
+  // eslint-disable-next-line no-unused-vars
+  function notifyRecommendOldUi(msg) {
+    notifyUser(msg +
+        ' You may be able to fix this via Settings -> Advanced -> ' +
+        'uncheck "Experimental features"');
+  }
+
   function notifyUser(msg) {
-    withId('app_holder', (appHolder) => {
+    withId('todoist_app', (appHolder) => {
       withClass(appHolder, 'ts-note', (oldNote) => {
         appHolder.removeChild(oldNote);
       });
@@ -3196,7 +3263,7 @@
 
   function createModal(msg) {
     let modal;
-    withId('app_holder', (appHolder) => {
+    withId('todoist_app', (appHolder) => {
       const close = div('ts-modal-close');
       close.innerHTML = svgs['sm1/close_small.svg'];
       const content = div(
@@ -3278,7 +3345,7 @@
       return [];
     }
     const results = [];
-    withId('content', (content) => {
+    withViewContent((content) => {
       withTag(content, 'li', (item) => {
         // Skip elements which don't correspond to tasks or sections
         const matches =
@@ -3555,6 +3622,7 @@
   // expects a key.
   function setupNavigate(navigationContainer) {
     switchKeymap(NAVIGATE_KEYMAP);
+    // TODO: remove once switch to new UI is done
     if (leftNavIsHidden()) {
       toggleLeftNav();
       openedLeftNavForNavigate = true;
@@ -3631,31 +3699,33 @@
           error('Couldn\'t figure out text for', li);
         }
       });
-      withClass(navigationContainer, 'expansion_panel__toggle', (summary) => {
-        let mustBeKeys = null;
-        const dataTrackAttr = summary.attributes['data-track'];
-        if (dataTrackAttr) {
-          const dataTrack = dataTrackAttr.value;
-          if (dataTrack === 'navigation|projects_panel') {
-            mustBeKeys = 'tp';
-          } else if (dataTrack === 'navigation|labels_panel') {
-            mustBeKeys = 'tl';
-          } else if (dataTrack === 'navigation|filters_panel') {
-            mustBeKeys = 'tf';
-          } else if (dataTrack === 'navigation|favorites_panel') {
-            mustBeKeys = 'tt';
-          } else {
-            error('Unexpected dataTrack value:', dataTrack);
-          }
-        }
-        if (mustBeKeys) {
-          navigateItems.push({
-            element: summary,
-            mustBeKeys,
-            keepGoing: true,
+      withQuery(navigationContainer,
+          '[data-expansion-panel-header=true]',
+          (summary) => {
+            let mustBeKeys = null;
+            const dataTrackAttr = summary.attributes['data-track'];
+            if (dataTrackAttr) {
+              const dataTrack = dataTrackAttr.value;
+              if (dataTrack === 'navigation|projects_panel') {
+                mustBeKeys = 'tp';
+              } else if (dataTrack === 'navigation|labels_panel') {
+                mustBeKeys = 'tl';
+              } else if (dataTrack === 'navigation|filters_panel') {
+                mustBeKeys = 'tf';
+              } else if (dataTrack === 'navigation|favorites_panel') {
+                mustBeKeys = 'tt';
+              } else {
+                error('Unexpected dataTrack value:', dataTrack);
+              }
+            }
+            if (mustBeKeys) {
+              navigateItems.push({
+                element: summary,
+                mustBeKeys,
+                keepGoing: true,
+              });
+            }
           });
-        }
-      });
       navigateOptions = assignKeysToItems(navigateItems);
       let different = false;
       for (const key in navigateOptions) {
@@ -3958,24 +4028,24 @@
         // Space to scroll down.  Shift+space to scroll up.
         if (ev.key === ' ') {
           keepGoing = true;
-          withId('left_menu', (leftMenu) => {
+          withNavScroll((navScroll) => {
             if (ev.shiftKey) {
-              leftMenu.scrollBy(0, leftMenu.clientHeight / -2);
+              navScroll.scrollBy(0, navScroll.clientHeight / -2);
             } else {
-              leftMenu.scrollBy(0, leftMenu.clientHeight / 2);
+              navScroll.scrollBy(0, navScroll.clientHeight / 2);
             }
           });
         } else if (ev.keyCode === UP_ARROW_KEYCODE) {
           // Up arrow to scroll up a little bit.
           keepGoing = true;
-          withId('left_menu', (leftMenu) => {
-            leftMenu.scrollBy(0, -40);
+          withNavScroll((navScroll) => {
+            navScroll.scrollBy(0, -40);
           });
         } else if (ev.keyCode === DOWN_ARROW_KEYCODE) {
           // Down arrow to scroll down a little bit.
           keepGoing = true;
-          withId('left_menu', (leftMenu) => {
-            leftMenu.scrollBy(0, 40);
+          withNavScroll((navScroll) => {
+            navScroll.scrollBy(0, 40);
           });
         } else if (ev.keyCode === BACKSPACE_KEYCODE) {
           // Backspace removes keys from list of pressed keys.
@@ -4095,6 +4165,11 @@
         }
       }
     }
+  }
+
+  function withNavScroll(f) {
+    // TODO: remove #left_menu once it no longer exists
+    withUnique(document, 'nav > div:last-child', f);
   }
 
   function isFavoritesSection(el) {
@@ -4283,7 +4358,7 @@
    */
 
   // eslint-disable-next-line max-len
-  const SORT_SVG_PATH = 'M15 14.5a2 2 0 011.936 1.498L19.5 16a.5.5 0 010 1l-2.563.001a2.001 2.001 0 01-3.874 0L4.5 17a.5.5 0 010-1l8.564-.002A2 2 0 0115 14.5zm-.982 1.81l.005-.025-.005.026-.003.014-.004.025-.007.061A.897.897 0 0014 16.5l.008.125.007.047-.001.002.003.014.006.024h-.001l.004.018.016.058.007.021.004.013.009.026.013.033.012.027-.011-.026.019.043-.008-.017.029.06-.018-.037.048.09a1 1 0 001.784-.155l.015-.039.006-.018-.015.039.022-.06-.001-.001.016-.057.004-.018.005-.024.001-.006v-.001l.005-.033.008-.06A.877.877 0 0016 16.5l-.008-.124-.007-.051-.001-.001-.003-.014-.01-.047-.004-.016-.007-.024-.01-.034-.004-.012-.01-.03-.006-.013-.007-.017-.01-.026a.998.998 0 00-1.843.043l-.014.034-.007.022-.014.047-.002.009v.001l-.005.016-.01.047zM9 9.5a2 2 0 011.936 1.498L19.5 11a.5.5 0 010 1l-8.563.001a2.001 2.001 0 01-3.874 0L4.5 12a.5.5 0 010-1l2.564-.002A2 2 0 019 9.5zm0 1a.998.998 0 00-.93.634l-.014.034-.007.022-.014.047-.002.009v.001l-.005.016-.01.047.005-.025-.005.026-.003.014-.004.025-.007.061C8 11.441 8 11.471 8 11.5l.008.125.007.047-.001.002.003.014.006.024h-.001l.004.018.016.058.007.021.004.013.009.026.013.033.012.027-.011-.026.019.043-.008-.017.029.06-.018-.037.048.09a1 1 0 001.784-.155l.015-.039.006-.018-.015.039.022-.06-.001-.001.016-.057.004-.018.005-.024.001-.006v-.001l.005-.033.008-.06A.877.877 0 0010 11.5l-.008-.124-.007-.051-.001-.001-.003-.014-.01-.047-.004-.016-.007-.024-.01-.034-.004-.012-.01-.03-.006-.013-.007-.017-.01-.026A1.002 1.002 0 009 10.5zm6-6a2 2 0 011.936 1.498L19.5 6a.5.5 0 010 1l-2.563.001a2.001 2.001 0 01-3.874 0L4.5 7a.5.5 0 010-1l8.564-.002A2 2 0 0115 4.5zm0 1a.998.998 0 00-.93.634l-.014.034-.007.022-.014.047-.002.009v.001l-.005.016-.01.047.005-.025-.005.026-.003.014-.004.025-.007.061C14 6.441 14 6.471 14 6.5l.008.125.007.047-.001.002.003.014.006.024h-.001l.004.018.016.058.007.021.004.013.009.026.013.033.012.027-.011-.026.019.043-.008-.017.029.06-.018-.037.048.09a1 1 0 001.784-.155l.015-.039.006-.018-.015.039.022-.06-.001-.001.016-.057.004-.018.005-.024.001-.006v-.001l.005-.033.008-.06C16 6.557 16 6.528 16 6.5l-.008-.124-.007-.051-.001-.001-.003-.014-.01-.047-.004-.016-.007-.024-.01-.034-.004-.012-.01-.03-.006-.013-.007-.017-.01-.026A1.002 1.002 0 0015 5.5z';
+  // const SORT_SVG_PATH = 'M15 14.5a2 2 0 011.936 1.498L19.5 16a.5.5 0 010 1l-2.563.001a2.001 2.001 0 01-3.874 0L4.5 17a.5.5 0 010-1l8.564-.002A2 2 0 0115 14.5zm-.982 1.81l.005-.025-.005.026-.003.014-.004.025-.007.061A.897.897 0 0014 16.5l.008.125.007.047-.001.002.003.014.006.024h-.001l.004.018.016.058.007.021.004.013.009.026.013.033.012.027-.011-.026.019.043-.008-.017.029.06-.018-.037.048.09a1 1 0 001.784-.155l.015-.039.006-.018-.015.039.022-.06-.001-.001.016-.057.004-.018.005-.024.001-.006v-.001l.005-.033.008-.06A.877.877 0 0016 16.5l-.008-.124-.007-.051-.001-.001-.003-.014-.01-.047-.004-.016-.007-.024-.01-.034-.004-.012-.01-.03-.006-.013-.007-.017-.01-.026a.998.998 0 00-1.843.043l-.014.034-.007.022-.014.047-.002.009v.001l-.005.016-.01.047zM9 9.5a2 2 0 011.936 1.498L19.5 11a.5.5 0 010 1l-8.563.001a2.001 2.001 0 01-3.874 0L4.5 12a.5.5 0 010-1l2.564-.002A2 2 0 019 9.5zm0 1a.998.998 0 00-.93.634l-.014.034-.007.022-.014.047-.002.009v.001l-.005.016-.01.047.005-.025-.005.026-.003.014-.004.025-.007.061C8 11.441 8 11.471 8 11.5l.008.125.007.047-.001.002.003.014.006.024h-.001l.004.018.016.058.007.021.004.013.009.026.013.033.012.027-.011-.026.019.043-.008-.017.029.06-.018-.037.048.09a1 1 0 001.784-.155l.015-.039.006-.018-.015.039.022-.06-.001-.001.016-.057.004-.018.005-.024.001-.006v-.001l.005-.033.008-.06A.877.877 0 0010 11.5l-.008-.124-.007-.051-.001-.001-.003-.014-.01-.047-.004-.016-.007-.024-.01-.034-.004-.012-.01-.03-.006-.013-.007-.017-.01-.026A1.002 1.002 0 009 10.5zm6-6a2 2 0 011.936 1.498L19.5 6a.5.5 0 010 1l-2.563.001a2.001 2.001 0 01-3.874 0L4.5 7a.5.5 0 010-1l8.564-.002A2 2 0 0115 4.5zm0 1a.998.998 0 00-.93.634l-.014.034-.007.022-.014.047-.002.009v.001l-.005.016-.01.047.005-.025-.005.026-.003.014-.004.025-.007.061C14 6.441 14 6.471 14 6.5l.008.125.007.047-.001.002.003.014.006.024h-.001l.004.018.016.058.007.021.004.013.009.026.013.033.012.027-.011-.026.019.043-.008-.017.029.06-.018-.037.048.09a1 1 0 001.784-.155l.015-.039.006-.018-.015.039.022-.06-.001-.001.016-.057.004-.018.005-.024.001-.006v-.001l.005-.033.008-.06C16 6.557 16 6.528 16 6.5l-.008-.124-.007-.051-.001-.001-.003-.014-.01-.047-.004-.016-.007-.024-.01-.034-.004-.012-.01-.03-.006-.013-.007-.017-.01-.026A1.002 1.002 0 0015 5.5z';
 
   /*****************************************************************************
    * Utilities
@@ -4360,7 +4435,7 @@
   // view. Does not work well for elements that are larger than half a screen
   // full.
   function verticalScrollIntoView(el, marginTop, marginBottom, skipCheck, t) {
-    withId('content', (content) => {
+    withViewContent((content) => {
       const oy = pageOffset(el).y - pageOffset(content).y;
       const cy = oy - content.scrollTop;
       const h = el.offsetHeight;
@@ -4413,7 +4488,6 @@
   }
 
   // Uses querySelectorAll, and applies the provided function to each result.
-  // eslint-disable-next-line no-unused-vars
   function withQuery(parent, query, f) {
     const els = selectAll(parent, query);
     for (let i = 0; i < els.length; i++) {
@@ -4853,32 +4927,31 @@
    */
 
   function updateBackgroundColor() {
-    withId('page_background', (background) => {
-      try {
-        const currentStyle =
-          background.computedStyleMap ?
-          background.computedStyleMap() :
-          background.currentStyle;
-        if (!currentStyle) {
-          // Issue is that we can't even enumerate the stylesheet rules as the
-          // theme CSS is from a different domain.  Could possibly be resolved
-          // by loading the CSS file directly, but that seems way too inovlved.
-          log('Figuring out background color not supported in some browsers');
-        }
-        const todoistBackgroundColor =
-          currentStyle.get('background-color').toString();
-        debug('Background color is', todoistBackgroundColor);
-        addCss([
-          '.' + TODOIST_SHORTCUTS_TIP + ' {',
-          // Since the tips overlap expand / collapse arrows, set
-          // background.
-          '  background-color: ' + todoistBackgroundColor + ';',
-          '}',
-        ].join('\n'));
-      } catch (e) {
-        warn('Failed to figure out background color:', e);
+    const background = document.body;
+    try {
+      const currentStyle =
+        background.computedStyleMap ?
+        background.computedStyleMap() :
+        background.currentStyle;
+      if (!currentStyle) {
+        // Issue is that we can't even enumerate the stylesheet rules as the
+        // theme CSS is from a different domain.  Could possibly be resolved
+        // by loading the CSS file directly, but that seems way too inovlved.
+        log('Figuring out background color not supported in some browsers');
       }
-    });
+      const todoistBackgroundColor =
+        currentStyle.get('background-color').toString();
+      debug('Background color is', todoistBackgroundColor);
+      addCss([
+        '.' + TODOIST_SHORTCUTS_TIP + ' {',
+        // Since the tips overlap expand / collapse arrows, set
+        // background.
+        '  background-color: ' + todoistBackgroundColor + ';',
+        '}',
+      ].join('\n'));
+    } catch (e) {
+      warn('Failed to figure out background color:', e);
+    }
   }
   updateBackgroundColor();
   // Sometimes there's a lag for the theme to update, so re-query it
@@ -5029,11 +5102,25 @@
     '.task_list_item--keyboard_shortcuts_active .task_list_item__body {',
     '  background: transparent !important;',
     '}',
-    // Fix adaptive padding of left menu so that there is space for the
-    // navigation hints.
+    // Create space for navigation hints. My apologies to Todoist designers.
+    // Tho tbh I think the top looks better this way.
     '',
+    'nav {',
+    '  padding-left: 0 !important;',
+    '}',
+    '',
+    'nav > div:last-child {',
+    '  padding-left: 15px !important;',
+    '}',
+    '',
+    // TODO: remove once this no longer exists.
     '#left_menu_inner {',
     '  padding-left: 24px;',
+    '}',
+    // Fix for new navigation pane not having position: relative for some li
+    '',
+    'nav li {',
+    '  position: relative;',
     '}',
   ].join('\n'));
 
@@ -5354,17 +5441,22 @@
     initializing = false;
   }
 
-  function initializeWhenContentAppears() {
-    const content = getById('content');
-    if (content === null) {
+  function initializeWhenContentAppears(gas) {
+    const content = getViewContent();
+    if (gas > 0 && content === null) {
       info('Waiting for #content div before initializing todoist-shortcuts');
-      setTimeout(initializeWhenContentAppears, 50);
+      setTimeout(() => initializeWhenContentAppears(gas - 1), 50);
     } else {
-      info('Found #content div - initializing todoist-shortcuts!');
-      registerTopMutationObservers(content);
+      if (content === null) {
+        error('Ran out of gas looking for content div. ' +
+              'Initializing todoist-shortcuts anyway.');
+      } else {
+        info('Found content div - initializing todoist-shortcuts!');
+      }
+      registerTopMutationObservers(content || document);
       initialize();
     }
   }
 
-  initializeWhenContentAppears();
+  initializeWhenContentAppears(100);
 })();
