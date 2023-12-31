@@ -1,5 +1,111 @@
 # todoist-shortcuts changelog
 
+## Version 192
+
+### Fixes ###
+
+* Fixes clicking on buttons from the "more actions" menu on a single
+  task. Fixes common shortcuts like `v` (move), `e` or `#` (delete),
+  etc.
+
+
+## Version 191
+
+### Fixes ###
+
+* Fixes add task "q" shortcut - broken by Todoist's use of HTML DOM
+  becoming more obfuscated. Probably now only works for English. See
+  [#266][].
+
+### Enhancements ###
+
+* Adds support for filters&labels view in navigation mode, thanks for
+  a contribution from [adamleerich][] - see [#262][]
+
+* Adds `enter` keybinding for editing the task text in task view. See
+  [#265][]
+
+* Updates to extension manifest v3
+
+[#262]: https://github.com/mgsloan/todoist-shortcuts/issues/262
+[#265]: https://github.com/mgsloan/todoist-shortcuts/issues/265
+[#266]: https://github.com/mgsloan/todoist-shortcuts/issues/266
+
+
+## Version 190
+
+### Fixes ###
+
+* Fixes shortcuts that involve opening context menus. See [#263] and [#264]
+
+[#263]: https://github.com/mgsloan/todoist-shortcuts/issues/263
+[#264]: https://github.com/mgsloan/todoist-shortcuts/issues/264
+
+
+## Version 189
+
+### Fixes ###
+
+* Fixes `g` scrolling in navigation mode (space bar / up+down arrows)
+
+
+## Version 188
+
+### Fixes ###
+
+* Fixes `t` schedulre binding for scheduling tomorrow, broken by
+  removal of that option in Todoist.
+
+
+## Version 187
+
+### Fixes ###
+
+* Fixes `g` left hand navigation in Firefox. See [#259][].
+
+[#259]: https://github.com/mgsloan/todoist-shortcuts/issues/259
+
+
+## Version 186
+
+### Fixes ###
+
+* Fixes adding left hand space for navigation hints with the most
+  recent version of the new UI design.
+
+### Enhancements ###
+
+* Uses `q` and `/` for hints on Add task / Search items in navigation
+  mode, to match typical shortcuts.
+
+
+## Version 185
+
+### Fixes ###
+
+* Fixes `q` quick-add with new UI layout (experimental). Unfortunately
+  Todoist seems to no longer be using semantic attributes and so this
+  fix probably only works with the english version of Todoist.
+
+
+## Version 184
+
+Reports and fixes in this release thanks to [adamleerich][]
+
+### Fixes ###
+
+* Fixes `alt-t` in scheduler opening the time settings. See [#256][].
+
+* Adds documentation for `0-9` shortcuts for scheduling items N days
+  in the future. See [#257][].
+
+* Removes documentation for scheduler `delete` + `enter` shortcuts as
+  they don't appear to work anyway. See [#256][].
+
+[#256]: https://github.com/mgsloan/todoist-shortcuts/issues/256
+[#257]: https://github.com/mgsloan/todoist-shortcuts/issues/257
+
+
 ## Version 183
 
 ### Fixes ###

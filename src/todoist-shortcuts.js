@@ -127,7 +127,8 @@
   // Scheduling keybindings (used when scheduler is open)
   const SCHEDULE_BINDINGS = [].concat(SCHEDULE_CURSOR_BINDINGS, [
     ['c', scheduleToday],
-    ['t', scheduleTomorrow],
+    ['t', schedulePlusN(1)],
+    ['w', scheduleNextWeek],
     ['n', scheduleNextWeekend],
     ['m', scheduleNextMonth],
     [['s', 'p'], schedulePostpone],
@@ -145,7 +146,8 @@
     ['alt+t', scheduleTime],
     ['shift+t', scheduleText],
     ['escape', closeContextMenus],
-    ['fallback', schedulerFallback],
+    // See #256 for why this is no longer needed
+    // ['fallback', schedulerFallback],
     // See #252 for why these are disabled.
     [['j', 'k', 'up', 'down'], noop],
   ]);
@@ -166,6 +168,7 @@
   const BULK_MOVE_KEYMAP = 'bulk_move';
 
   const TASK_VIEW_BINDINGS = [
+    ['enter', taskViewEdit],
     ['d', taskViewDone],
     [['i', 'escape'], taskViewClose],
     ['h', taskViewParent],
@@ -206,7 +209,6 @@
   const RIGHT_ARROW_KEYCODE = 39;
   const DOWN_ARROW_KEYCODE = 40;
   const BACKSPACE_KEYCODE = 8;
-  const DELETE_KEYCODE = 46;
   const ENTER_KEYCODE = 13;
   const ESCAPE_KEYCODE = 27;
 
@@ -266,33 +268,6 @@
   // Keymap used when there is a floating window.
   const POPUP_BINDINGS = [];
   const POPUP_KEYMAP = 'popup';
-
-  function schedulerFallback(ev) {
-    const scheduler = findScheduler();
-    if (scheduler) {
-      // The idea here is that backspace or delete will clear and
-      // focus the date entry box. Enter will just focus it.
-      if (ev.type === 'keydown' &&
-          (ev.keyCode === BACKSPACE_KEYCODE ||
-           ev.keyCode === DELETE_KEYCODE ||
-           ev.keyCode === ENTER_KEYCODE)) {
-        withUniqueClass(scheduler, 'scheduler-input', all, (inputDiv) => {
-          withUniqueTag(inputDiv, 'input', all, (inputEl) => {
-            if (ev.keyCode !== ENTER_KEYCODE) {
-              inputEl.value = '';
-            }
-            inputEl.focus();
-          });
-        });
-        return false;
-      } else {
-        return true;
-      }
-    } else {
-      warn('Expected to find scheduler, but it wasn\'t found.');
-      return true;
-    }
-  }
 
   // Which selection-oriented commands to apply to the cursor if there is no
   // selection. A few possible values:
@@ -555,14 +530,17 @@
       scheduleText();
     }
     setTimeout(() => {
-      withScheduler('scheduleTime', (scheduler) => {
-        const addTime = getUniqueClass(scheduler, 'scheduler-actions-addtime');
-        if (addTime) {
-          click(addTime);
-        } else {
-          withUniqueClass(document, 'scheduler-actions-time-label', all, click);
-        }
-      });
+      // TODO: less fragile way to find the "Time" button than relying
+      // on no other buttons having this attribute.
+      const success = withUnique(document, '.scheduler button[aria-controls]',
+          (button) => {
+            click(button);
+            return true;
+          });
+      // Fallback on english text matching if the above doesn't work.
+      if (!success) {
+        withUniqueTag(findScheduler(), 'button', matchingText('Time'), click);
+      }
       focusTimeInput();
     }, 50);
   }
@@ -576,20 +554,6 @@
               scheduler,
               'button',
               matchingAttr('data-track', 'scheduler|date_shortcut_today'),
-              click,
-          );
-        });
-  }
-
-  // Click 'tomorrow' in schedule. Only does anything if schedule is open.
-  function scheduleTomorrow() {
-    withScheduler(
-        'scheduleTomorrow',
-        (scheduler) => {
-          withUniqueTag(
-              scheduler,
-              'button',
-              matchingAttr('data-track', 'scheduler|date_shortcut_tomorrow'),
               click,
           );
         });
@@ -814,7 +778,7 @@
     } else {
       withUnique(
           openMoreMenu(),
-          'li[data-action-hint="multi-select-toolbar-overflow-menu-complete"]',
+          '[data-action-hint="multi-select-toolbar-overflow-menu-complete"]',
           click,
       );
     }
@@ -831,7 +795,7 @@
     } else {
       withUnique(
           openMoreMenu(),
-          'li[data-action-hint="multi-select-toolbar-overflow-menu-delete"]',
+          '[data-action-hint="multi-select-toolbar-overflow-menu-delete"]',
           click,
       );
     }
@@ -844,7 +808,7 @@
     } else {
       withUnique(
           openMoreMenu(),
-          'li[data-action-hint="multi-select-toolbar-overflow-menu-duplicate"]',
+          '[data-action-hint="multi-select-toolbar-overflow-menu-duplicate"]',
           click,
       );
     }
@@ -992,13 +956,13 @@
 
   function addTaskTop() {
     if (viewMode === 'agenda') {
-      quickAddTask();
+      quickAdd();
     } else {
       const tasks = getTasks();
       if (tasks.length > 0) {
         addAboveTask(tasks[0]);
       } else {
-        quickAddTask();
+        quickAdd();
       }
     }
   }
@@ -1027,14 +991,7 @@
 
   // Open reminders dialog
   function openReminders() {
-    withTaskMenu(requireCursor(), false, (menu) => {
-      withUniqueClass(
-          menu,
-          'menu_item',
-          matchingAction('task-overflow-menu-reminders'),
-          click,
-      );
-    });
+    clickTaskMenu(requireCursor(), 'task-overflow-menu-reminders');
   }
 
   // Open assign dialog
@@ -1053,7 +1010,7 @@
     } else {
       withUnique(
           openMoreMenu(),
-          'li[data-action-hint="multi-select-toolbar-overflow-menu-asssign"]',
+          '[data-action-hint="multi-select-toolbar-overflow-menu-asssign"]',
           click,
       );
     }
@@ -1323,17 +1280,6 @@
     f(links, current);
   }
 
-  // Clicks quick add task button.  Would be better to use todoist's builtin
-  // shortcut, but that logic is currently WIP and broken.
-  function quickAddTask() {
-    withUniqueTag(
-        document,
-        'button',
-        matchingAttr('data-track', 'navigation|quick_add'),
-        click,
-    );
-  }
-
   // Trigger undo by simulating a keypress.
   function undo() {
     // Triggering native shortcut no longer seems to be working, so instead
@@ -1446,7 +1392,13 @@
   }
 
   function quickAdd() {
-    withUnique(document, 'button[data-track="navigation|quick_add"]', click);
+    withUniqueClass(document, 'app-sidebar-container', all, (appSidebar) =>
+      withUniqueTag(
+          appSidebar,
+          'button',
+          (button) => button.innerText.includes('Add task'),
+          click),
+    );
   }
 
   function leftNavIsHidden() {
@@ -1455,9 +1407,16 @@
     }
     const appSidebar = getUniqueClass(document, 'app-sidebar-container');
     if (appSidebar) {
-      return appSidebar.computedStyleMap().get('margin-left').value != 0;
+      // TODO: Fix this on firefox - always fails.
+      try {
+        return appSidebar.computedStyleMap().get('margin-left').value != 0;
+      } catch (e) {
+        warn('Failed to check if left nav is open:', e);
+        return false;
+      }
     }
     warn('Couldn\'t figure out if left nav is open or not.');
+    return false;
   }
 
   function toggleLeftNav() {
@@ -1590,6 +1549,10 @@
   }
 
   const TASK_VIEW_SELECTOR = 'div[data-testid="task-details-modal"]';
+
+  function taskViewEdit() {
+    withUnique(document, '.task-detail-editor-container .task_content', click);
+  }
 
   function taskViewDone() {
     withUnique(document, '[data-action-hint=task-detail-view-complete]', click);
@@ -2548,7 +2511,7 @@
         matchingAction('multi-select-toolbar-overflow-menu-trigger'),
         click,
     );
-    const result = getUniqueTag(document, 'ul', matchingClass('menu_list'));
+    const result = selectUnique(document, '.reactist_menulist[data-dialog]');
     if (!result) {
       throw new Error('Failed to find "More" menu');
     }
@@ -2596,32 +2559,27 @@
 
   // Opens up the task's contextual menu and clicks an item via text match.
   function clickTaskMenu(task, action, shouldScroll) {
-    withTaskMenu(task, shouldScroll, (menu) => {
-      withUnique(menu, '[data-action-hint="' + action + '"]', click);
+    withTaskMenuOpen(task, shouldScroll, () => {
+      withUnique(document, '[data-action-hint="' + action + '"]', click);
     });
   }
 
-  function withTaskMenu(task, shouldScroll, f) {
+  function withTaskMenuOpen(task, shouldScroll, f) {
     if (shouldScroll) {
-      withTaskMenuImpl(task, f);
+      withTaskMenuOpenImpl(task, f);
     } else {
       withScrollIgnoredFor(400, () => {
-        withTaskMenuImpl(task, f);
+        withTaskMenuOpenImpl(task, f);
       });
     }
   }
 
-  function withTaskMenuImpl(task, f) {
+  function withTaskMenuOpenImpl(task, f) {
     withTaskHovered(task, () => {
       const query = 'button[data-action-hint="task-overflow-menu"]';
       withUnique(task, query, (openMenu) => {
         click(openMenu);
-        withUniqueClass(
-            document,
-            'popper',
-            hasChild('[data-action-hint="task-overflow-menu-move-to-project"]'),
-            f,
-        );
+        f();
       });
     });
   }
@@ -3124,8 +3082,8 @@
     } else if (viewMode === 'agenda') {
       addToSectionContaining(task);
     } else if (viewMode === 'project') {
-      withTaskMenu(task, true, (menu) => {
-        const btn = getUniqueClass(menu, 'menu_item', matchingAction(action));
+      withTaskMenuOpen(task, true, () => {
+        const btn = selectUnique('[data-action-hint="' + action + '"]');
         if (btn) {
           click(btn);
         } else {
@@ -3167,7 +3125,7 @@
       // TODO: This works well in labels, but may be a bit unexpected in filters
       // like "Priority 1", since quick add will not adjust the task such that
       // it ends up in the filter.
-      quickAddTask();
+      quickAdd();
       return;
     }
     if (viewMode === 'agenda' &&
@@ -3185,7 +3143,7 @@
       scrollTaskEditorIntoView();
     } else {
       warn('Couldn\'t find task add button so falling back on quick-add');
-      quickAddTask();
+      quickAdd();
     }
   }
 
@@ -3638,6 +3596,7 @@
         let mustBeKeys = null;
         let txt = '';
         let initials = null;
+        let keepGoing = false;
         if (matchingAttr('data-track', 'navigation|inbox')(li)) {
           mustBeKeys = 'i';
         } else if (matchingAttr('data-track', 'navigation|team_inbox')(li)) {
@@ -3646,8 +3605,17 @@
           mustBeKeys = 'g';
         } else if (matchingAttr('data-track', 'navigation|upcoming')(li)) {
           mustBeKeys = 'n';
+        } else if (matchingAttr(
+            'data-track',
+            'navigation|filters-labels')(li)) {
+          mustBeKeys = 'fl';
+          keepGoing = true;
         } else if (matchingAttr('data-track', 'navigation|completed')(li)) {
           mustBeKeys = 'co';
+        } else if (selectUnique(li, 'a[aria-label="Add task"]')) {
+          mustBeKeys = 'q';
+        } else if (selectUnique(li, 'a[aria-label="Search"]')) {
+          mustBeKeys = '/';
         } else {
           const rawText = getNavItemText(li).split('\n')[0];
           if (rawText.length > 0) {
@@ -3688,12 +3656,14 @@
             mustBeKeys,
             text: txt,
             initials,
+            keepGoing,
           });
         } else if (txt) {
           navigateItems.push({
             element: li,
             text: txt,
             initials,
+            keepGoing,
           });
         } else {
           error('Couldn\'t figure out text for', li);
@@ -3726,6 +3696,58 @@
               });
             }
           });
+
+      // Add labels and filters if that content is visible
+      withQuery(document, 'section[aria-label="Filters"]', (filtersHolder) => {
+        withTag(filtersHolder, 'li', (li) => {
+          let txt = '';
+          let initials = null;
+          nameSpan = getUniqueClass(li, 'simple_content');
+
+          if (nameSpan) {
+            txt = preprocessItemText(nameSpan.textContent);
+            initials = getItemInitials(nameSpan.textContent);
+          } else {
+            warn('failed to get nav link text for', li);
+          }
+
+          if (txt) {
+            navigateItems.push({
+              element: li,
+              text: txt,
+              initials,
+            });
+          } else {
+            error('Couldn\'t figure out text for', li);
+          }
+        });
+      });
+
+      withQuery(document, 'section[aria-label="Labels"]', (labelsHolder) => {
+        withTag(labelsHolder, 'li', (li) => {
+          let txt = '';
+          let initials = null;
+          nameSpan = getUniqueClass(li, 'simple_content');
+
+          if (nameSpan) {
+            txt = preprocessItemText(nameSpan.textContent);
+            initials = getItemInitials(nameSpan.textContent);
+          } else {
+            warn('failed to get nav link text for', li);
+          }
+
+          if (txt) {
+            navigateItems.push({
+              element: li,
+              text: txt,
+              initials,
+            });
+          } else {
+            error('Couldn\'t figure out text for', li);
+          }
+        });
+      });
+
       navigateOptions = assignKeysToItems(navigateItems);
       let different = false;
       for (const key in navigateOptions) {
@@ -4053,7 +4075,8 @@
           keepGoing = rerenderTips();
         } else {
           const char = ev.key.toLowerCase();
-          if (char.length === 1 && lowercaseCharIsAlphanum(char)) {
+          if (char.length === 1 &&
+              (lowercaseCharIsAlphanum(char) || char == '/')) {
             navigateKeysPressed += char;
             const option = navigateOptions[navigateKeysPressed];
             if (option) {
@@ -4169,7 +4192,20 @@
 
   function withNavScroll(f) {
     // TODO: remove #left_menu once it no longer exists
-    withUnique(document, 'nav > div:last-child', f);
+    const scrollDiv =
+      selectUnique(
+          document,
+          'nav > div,#left_menu',
+          isVerticallyScrollable);
+    if (scrollDiv) {
+      f(scrollDiv);
+    } else {
+      warn('Failed to find scroll div');
+    }
+  }
+
+  function isVerticallyScrollable(el) {
+    return el.scrollHeight > el.clientHeight;
   }
 
   function isFavoritesSection(el) {
@@ -4997,6 +5033,11 @@
     '  margin-top: -3px;',
     '}',
     '',
+    '#content .' + TODOIST_SHORTCUTS_TIP + ' {',
+    '  margin-top: 6px;',
+    '  margin-left: -22px;',
+    '}',
+    '',
     '#page_background {',
     '  position: relative;',
     '}',
@@ -5103,14 +5144,9 @@
     '  background: transparent !important;',
     '}',
     // Create space for navigation hints. My apologies to Todoist designers.
-    // Tho tbh I think the top looks better this way.
     '',
-    'nav {',
-    '  padding-left: 0 !important;',
-    '}',
-    '',
-    'nav > div:last-child {',
-    '  padding-left: 15px !important;',
+    'nav > div {',
+    '  padding-left: 12px !important;',
     '}',
     '',
     // TODO: remove once this no longer exists.
