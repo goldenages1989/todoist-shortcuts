@@ -11,9 +11,6 @@
     /Safari/.test(navigator.userAgent) && /Apple/.test(navigator.vendor);
 
   // Cursor navigation.
-  //
-  // Note that modifying these will not affect the cursor motion bindings in
-  // 'handleBulkMoveKey'.
   const CURSOR_BINDINGS = [
     [['j', 'down'], cursorDown],
     [['k', 'up'], cursorUp],
@@ -89,9 +86,9 @@
     ['n', sortByName],
     ['r', sortByAssignee],
 
-    // Bulk reschedule / move mode
-    ['* t', bulkSchedule],
-    ['* v', bulkMove],
+    // Bulk reschedule / move modes were removed
+    ['* t', notifyBulkActionsRemoved],
+    ['* v', notifyBulkActionsRemoved],
 
     // Other
 
@@ -153,20 +150,6 @@
   ]);
   const SCHEDULE_KEYMAP = 'schedule';
 
-  // Bulk schedule mode keybindings
-  const BULK_SCHEDULE_BINDINGS = [].concat(SCHEDULE_BINDINGS, [
-    [['v', 'alt+v'], sequence([exitBulkSchedule, bulkMove])],
-    ['escape', exitBulkSchedule],
-  ]);
-  const BULK_SCHEDULE_KEYMAP = 'bulk_schedule';
-
-  // Bulk move keybindings
-  //
-  // These can't be handled by mousetrap, because they need to be triggered
-  // while an input is focused. See 'handleBulkMoveKey' below.
-  const BULK_MOVE_BINDINGS = [];
-  const BULK_MOVE_KEYMAP = 'bulk_move';
-
   const TASK_VIEW_BINDINGS = [
     ['enter', taskViewEdit],
     ['d', taskViewDone],
@@ -204,62 +187,11 @@
   const MENU_LIST_KEYMAP = 'menu_list';
 
   // Keycode constants
-  const LEFT_ARROW_KEYCODE = 37;
   const UP_ARROW_KEYCODE = 38;
-  const RIGHT_ARROW_KEYCODE = 39;
   const DOWN_ARROW_KEYCODE = 40;
   const BACKSPACE_KEYCODE = 8;
   const ENTER_KEYCODE = 13;
   const ESCAPE_KEYCODE = 27;
-
-  function handleBulkMoveKey(ev) {
-    if (ev.keyCode === ESCAPE_KEYCODE && ev.type === 'keydown') {
-      exitBulkMove();
-      closeContextMenus();
-    } else if (ev.altKey && !ev.ctrlKey && !ev.metaKey) {
-      if (!ev.shiftKey) {
-        if (ev.key === 't') {
-          // alt+t -> switch to bulk schedule mode
-          exitBulkMove();
-          bulkSchedule();
-          return false;
-        } else if (ev.key === 'j' || ev.keyCode === DOWN_ARROW_KEYCODE) {
-          // alt-j or alt-down -> move cursor down
-          return wrapBulkMoveCursorChange(cursorDown);
-        } else if (ev.key === 'k' || ev.keyCode === UP_ARROW_KEYCODE) {
-          // alt-k or alt-up-> move cursor up
-          return wrapBulkMoveCursorChange(cursorUp);
-        } else if (ev.key === 'h' || ev.keyCode === LEFT_ARROW_KEYCODE) {
-          // alt-h or alt-left-> move cursor left
-          return wrapBulkMoveCursorChange(cursorLeft);
-        } else if (ev.key === 'h' || ev.keyCode === RIGHT_ARROW_KEYCODE) {
-          // alt-l or alt-right -> move cursor right
-          return wrapBulkMoveCursorChange(cursorRight);
-        }
-      }
-      if (ev.key === '^') {
-        // alt-^ -> move cursor to first item
-        return wrapBulkMoveCursorChange(cursorFirst);
-      } else if (ev.key === '$') {
-        // alt-^ -> move cursor to first item
-        return wrapBulkMoveCursorChange(cursorLast);
-      } else if (ev.key === '{') {
-        // alt-{ -> move cursor up section
-        return wrapBulkMoveCursorChange(cursorUpSection);
-      } else if (ev.key === '{') {
-        // alt-{ -> move cursor up section
-        return wrapBulkMoveCursorChange(cursorDownSection);
-      }
-    }
-    return true;
-  }
-
-  function wrapBulkMoveCursorChange(f) {
-    closeContextMenus();
-    f();
-    moveToProject();
-    return false;
-  }
 
   // Navigation mode uses its own key handler.
   const NAVIGATE_BINDINGS = [['fallback', handleNavigateKey]];
@@ -492,9 +424,6 @@
     if (mutateCursor) {
       clickTaskSchedule(mutateCursor);
       blurSchedulerInput();
-      if (inBulkScheduleMode) {
-        bulkScheduleCursorChanged();
-      }
     } else {
       const query = 'button[data-action-hint="multi-select-toolbar-scheduler"]';
       withUnique(document, query, (button) => {
@@ -649,9 +578,6 @@
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
       clickTaskMenu(mutateCursor, 'task-overflow-menu-move-to-project', true);
-      if (inBulkMoveMode) {
-        bulkMoveCursorChanged();
-      }
     } else {
       withUnique(
           document,
@@ -683,9 +609,6 @@
                   matchingAttr('aria-label', projectName),
                   click);
             });
-        if (inBulkMoveMode) {
-          bulkMoveCursorChanged();
-        }
       } else {
         withUnique(
             document,
@@ -1057,6 +980,7 @@
       });
     });
     // Close windows with close buttons
+    withQuery(document, '[aria-label="Close task"]', click);
     withQuery(document, '[aria-label="Close modal"]', click);
     // Close todoist-shortcuts' modals
     withClass(document, 'ts-modal-close', click);
@@ -1282,25 +1206,26 @@
 
   // Trigger undo by simulating a keypress.
   function undo() {
-    // Triggering native shortcut no longer seems to be working, so instead
-    // clicking the undo button. The main downside of this is that it only
-    // works if the undo button is visible.
-    //
-    // todoistShortcut({key: 'z'});
+    todoistShortcut({key: 'z'});
+    /*
+    // Old strategy for clicking the button.
     withUnique(document, '[role=alert]', (alertContainer) => {
       let undoButton = null;
-      for (button of selectAll(alertContainer, ' button')) {
-        if (button.querySelector('svg') === null) {
-          if (undoButton !== null) {
-            throw new Error('Multiple buttons in alert might be undo button');
-          }
-          undoButton = button;
-        }
+      const foundByText = getUniqueTag(
+        alertContainer, 'button', (el) => el.innerText === 'Undo');
+      if (foundByText) {
+        click(foundByText);
+        return;
       }
-      if (undoButton) {
-        click(undoButton);
+      const foundByLackOfSvg = getUniqueTag(
+        alertContainer, 'button', (el) => el.querySelector('svg') == null);
+      if (foundByLackOfSvg) {
+        click(foundByLackOfSvg);
+        return;
       }
+      notifyUser('Didn\'t find undo button, undo only works popup is visible.');
     });
+    */
   }
 
   function sortByDate() {
@@ -1402,9 +1327,6 @@
   }
 
   function leftNavIsHidden() {
-    if (document.documentElement.classList.contains('left_menu_hide')) {
-      return true;
-    }
     const appSidebar = getUniqueClass(document, 'app-sidebar-container');
     if (appSidebar) {
       // TODO: Fix this on firefox - always fails.
@@ -1427,13 +1349,6 @@
   }
 
   function focusSearch() {
-    // TODO: remove once gone
-    const quickFind = getById('quick_find');
-    if (quickFind) {
-      click(quickFind);
-      return;
-    }
-
     // TODO: does it work in other UI languages?
     withUnique(document, 'nav a[aria-label=Search]', click);
   }
@@ -1560,7 +1475,7 @@
 
   function taskViewClose() {
     withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUnique(taskView, 'button[aria-label="Close modal"]', click);
+      withUnique(taskView, 'button[aria-label="Close task"]', click);
     });
   }
 
@@ -1740,133 +1655,13 @@
     withCurrentFocusedMenuListItem(click);
   }
 
+  function notifyBulkActionsRemoved() {
+    notifyUser('Bulk move (* v) and bulk reschedule (* t) shortcuts were ' +
+               'removed as they had stopped working and were not ' +
+               'straightforward to fix.');
+  }
+
   function noop() {}
-
-  /*****************************************************************************
-  * Bulk schedule
-  */
-
-  // MUTABLE. Is 'true' if we're in bulk schedule mode.
-  let inBulkScheduleMode = false;
-  let nextBulkScheduleKey = null;
-
-  function bulkSchedule() {
-    deselectAllTasks();
-    const cursor = requireCursor();
-    inBulkScheduleMode = true;
-    nextBulkScheduleKey = getTaskKey(cursor);
-    updateKeymap();
-    oneBulkSchedule(cursor);
-  }
-
-  // TODO(new-scheduler): Exiting doesn't work immediately - visits an
-  // extra item.
-  function exitBulkSchedule() {
-    inBulkScheduleMode = false;
-    nextBulkScheduleKey = null;
-    updateKeymap();
-    closeContextMenus();
-  }
-
-  // NOTE: This is called internally, not intended for use as keybinding action.
-  function oneBulkSchedule() {
-    if (!nextBulkScheduleKey) {
-      debug('Exiting bulk schedule mode - nothing left to schedule.');
-      exitBulkSchedule();
-      return;
-    }
-    const curBulkScheduleTask = getTaskByKey(nextBulkScheduleKey);
-    if (!curBulkScheduleTask) {
-      warn(
-          'Exiting bulk schedule mode because it couldn\'t find',
-          nextBulkScheduleKey,
-      );
-      exitBulkSchedule();
-      return;
-    }
-    setCursor(curBulkScheduleTask, 'scroll');
-    bulkScheduleCursorChanged();
-    clickTaskSchedule(curBulkScheduleTask);
-    blurSchedulerInput();
-  }
-
-  function bulkScheduleCursorChanged() {
-    const cursor = getCursor();
-    if (cursor) {
-      const tasks = getTasks();
-      const nextBulkScheduleTask =
-            getNextCursorableTask(tasks, getTaskKey(cursor));
-      if (nextBulkScheduleTask) {
-        nextBulkScheduleKey = getTaskKey(nextBulkScheduleTask);
-        return;
-      }
-    }
-    nextBulkScheduleKey = null;
-  }
-
-  /*****************************************************************************
-  * Bulk move
-  */
-
-  // MUTABLE. Is 'true' if we're in bulk move mode.
-  let inBulkMoveMode = false;
-  let nextBulkMoveKey = null;
-
-  function bulkMove() {
-    deselectAllTasks();
-    const cursor = requireCursor();
-    inBulkMoveMode = true;
-    nextBulkMoveKey = getTaskKey(cursor);
-    updateKeymap();
-    oneBulkMove();
-  }
-
-  // eslint-disable-next-line no-unused-vars
-  function skipBulkMove() {
-    if (nextBulkMoveKey) {
-      // Closing the calendar will make it open the next.
-      closeContextMenus();
-    } else {
-      exitBulkMove();
-    }
-  }
-
-  function exitBulkMove() {
-    inBulkMoveMode = false;
-    updateKeymap();
-    closeContextMenus();
-  }
-
-  // NOTE: This is called internally, not intended for use as keybinding action.
-  function oneBulkMove() {
-    if (!nextBulkMoveKey) {
-      debug('Exiting bulk move mode because there is nothing left to move.');
-      exitBulkMove();
-      return;
-    }
-    const curBulkMoveTask = getTaskByKey(nextBulkMoveKey);
-    if (!curBulkMoveTask) {
-      warn('Exiting bulk move mode because it couldn\'t find', nextBulkMoveKey);
-      exitBulkMove();
-      return;
-    }
-    setCursor(curBulkMoveTask, 'scroll');
-    bulkMoveCursorChanged();
-    clickTaskMenu(curBulkMoveTask, 'task-overflow-menu-move-to-project', true);
-  }
-
-  function bulkMoveCursorChanged() {
-    const cursor = getCursor();
-    if (cursor) {
-      const tasks = getTasks();
-      const nextBulkMoveTask = getNextCursorableTask(tasks, getTaskKey(cursor));
-      if (nextBulkMoveTask) {
-        nextBulkMoveKey = getTaskKey(nextBulkMoveTask);
-        return;
-      }
-    }
-    nextBulkScheduleKey = null;
-  }
 
   /*****************************************************************************
    * Utilities for manipulating the UI
@@ -2384,46 +2179,6 @@
         updateKeymap();
       }
     }, {childList: true, subtree: true});
-    registerMutationObserver(document.body, handleBodyChange);
-  }
-
-  function handleBodyChange() {
-    let nextTask;
-    if (inBulkScheduleMode) {
-      if (!checkSchedulerOpen()) {
-        if (nextBulkScheduleKey) {
-          nextTask = getTaskByKey(nextBulkScheduleKey);
-          if (nextTask) {
-            debug('Bulk schedule dialog is closed, so scheduling next task.');
-            oneBulkSchedule();
-          } else {
-            error('Could not find next task for bulk schedule.');
-            exitBulkSchedule();
-          }
-        } else {
-          debug('Bulk schedule done because there\'s no next task.');
-          exitBulkSchedule();
-        }
-      }
-    }
-    if (inBulkMoveMode) {
-      if (!checkMoveToProjectOpen()) {
-        if (nextBulkMoveKey) {
-          nextTask = getTaskByKey(nextBulkMoveKey);
-          if (nextTask) {
-            debug('Bulk move dialog is closed, so scheduling next task.');
-            setCursor(nextTask, 'no-scroll');
-            oneBulkMove();
-          } else {
-            error('Could not find next task for bulk move.');
-            exitBulkMove();
-          }
-        } else {
-          debug('Bulk move done because there\'s no next task.');
-          exitBulkMove();
-        }
-      }
-    }
   }
 
   function updateKeymap() {
@@ -2434,14 +2189,6 @@
       }
       if (getCurrentFocusedMenuListItem()) {
         switchKeymap(MENU_LIST_KEYMAP);
-        return;
-      }
-      if (inBulkScheduleMode) {
-        switchKeymap(BULK_SCHEDULE_KEYMAP);
-        return;
-      }
-      if (inBulkMoveMode) {
-        switchKeymap(BULK_MOVE_KEYMAP);
         return;
       }
       if (checkSchedulerOpen()) {
@@ -2584,10 +2331,6 @@
     });
   }
 
-  function checkMoveToProjectOpen() {
-    return getFirstClass(document, 'project_picker') !== null;
-  }
-
   function checkSchedulerOpen() {
     return findScheduler() !== null;
   }
@@ -2606,7 +2349,6 @@
   }
 
   // Simulate a key press with todoist's global handlers.
-  // eslint-disable-next-line no-unused-vars
   function todoistShortcut(options0) {
     const options = typeof options0 === 'string' ? {key: options0} : options0;
     let ev = new Event('keydown');
@@ -3539,18 +3281,14 @@
   }
 
   // Gets the next task the cursor can be moved to, after the specified task.
+  //
+  // eslint-disable-next-line no-unused-vars
   function getNextCursorableTask(tasks, currentKey) {
     for (let i = 0; i < tasks.length; i++) {
       if (getTaskKey(tasks[i]) === currentKey) {
         if (i + 1 < tasks.length) {
           return tasks[i + 1];
         }
-        /*
-        for (let j = i + 1; j < tasks.length; j++) {
-          const task = tasks[j];
-          return task;
-        }
-        */
       }
     }
     return null;
@@ -3580,7 +3318,6 @@
   // expects a key.
   function setupNavigate(navigationContainer) {
     switchKeymap(NAVIGATE_KEYMAP);
-    // TODO: remove once switch to new UI is done
     if (leftNavIsHidden()) {
       toggleLeftNav();
       openedLeftNavForNavigate = true;
@@ -4158,11 +3895,14 @@
               let elToClick = getUniqueTag(el, 'a', all);
               elToClick = elToClick || el;
               click(elToClick);
-              // Scroll the task into view, if needed. The delay is
-              // to give time to the uncollapsing.
-              setTimeout(() => {
-                el.scrollIntoViewIfNeeded();
-              }, 300);
+              // Scroll the nav element into view, if needed. The
+              // delay is to give time to the uncollapsing. Not
+              // supported on firefox etc.
+              if (el.scrollIntoViewIfNeeded) {
+                setTimeout(() => {
+                  el.scrollIntoViewIfNeeded();
+                }, 300);
+              }
               // If we're just changing folding, then the user probably wants to
               // stay in navigation mode, so reset and rerender.
               if (keepGoing) {
@@ -4191,11 +3931,10 @@
   }
 
   function withNavScroll(f) {
-    // TODO: remove #left_menu once it no longer exists
     const scrollDiv =
       selectUnique(
           document,
-          'nav > div,#left_menu',
+          'nav > div',
           isVerticallyScrollable);
     if (scrollDiv) {
       f(scrollDiv);
@@ -4275,12 +4014,12 @@
   }
 
   function scrollTaskToBottom(task) {
-    verticalScrollIntoView(task, getTopHeight(), 0, true, 0.9);
+    verticalScrollIntoView(task, getTopHeight(), 0, true, 1);
     scrollTaskIntoView(task);
   }
 
   function scrollTaskToTop(task) {
-    verticalScrollIntoView(task, getTopHeight(), 0, true, 0.1);
+    verticalScrollIntoView(task, getTopHeight(), 0, true, 0);
     scrollTaskIntoView(task);
   }
 
@@ -4475,8 +4214,11 @@
       const oy = pageOffset(el).y - pageOffset(content).y;
       const cy = oy - content.scrollTop;
       const h = el.offsetHeight;
+      const overflowDiv = getUniqueClass(
+          content, 'action_head__overflow_actions');
+      const overflowHeight = overflowDiv ? overflowDiv.offsetHeight : 0;
       if (skipCheck ||
-          cy < marginTop ||
+          cy < marginTop + el.offsetHeight + overflowHeight ||
           cy + h > content.offsetHeight - marginBottom) {
         // TODO: for very large tasks, this could end up with the whole task not
         // being in view.
@@ -4973,7 +4715,8 @@
         // Issue is that we can't even enumerate the stylesheet rules as the
         // theme CSS is from a different domain.  Could possibly be resolved
         // by loading the CSS file directly, but that seems way too inovlved.
-        log('Figuring out background color not supported in some browsers');
+        warn('Figuring out background color not supported in some browsers');
+        return;
       }
       const todoistBackgroundColor =
         currentStyle.get('background-color').toString();
@@ -5149,10 +4892,6 @@
     '  padding-left: 12px !important;',
     '}',
     '',
-    // TODO: remove once this no longer exists.
-    '#left_menu_inner {',
-    '  padding-left: 24px;',
-    '}',
     // Fix for new navigation pane not having position: relative for some li
     '',
     'nav li {',
@@ -5371,13 +5110,8 @@
       // eslint-disable-next-line no-debugger
       debugger;
     }
-    // Focus is on an input box during bulk move code, and mousetrap doesn't
-    // handle those events.  So this handling needs to be done manually.
     if (todoistModalIsOpen()) {
       return modalKeyHandler(ev);
-    }
-    if (inBulkMoveMode) {
-      return handleBulkMoveKey(ev);
     }
     if (ev.keyCode === ESCAPE_KEYCODE && ev.type === 'keydown') {
       // Workaround for #217
@@ -5444,8 +5178,6 @@
     // Register key bindings with mousetrap.
     registerKeybindings(DEFAULT_KEYMAP, KEY_BINDINGS);
     registerKeybindings(SCHEDULE_KEYMAP, SCHEDULE_BINDINGS);
-    registerKeybindings(BULK_SCHEDULE_KEYMAP, BULK_SCHEDULE_BINDINGS);
-    registerKeybindings(BULK_MOVE_KEYMAP, BULK_MOVE_BINDINGS);
     registerKeybindings(NAVIGATE_KEYMAP, NAVIGATE_BINDINGS);
     registerKeybindings(POPUP_KEYMAP, POPUP_BINDINGS);
     registerKeybindings(TASK_VIEW_KEYMAP, TASK_VIEW_BINDINGS);

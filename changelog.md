@@ -1,5 +1,43 @@
 # todoist-shortcuts changelog
 
+## Version 196
+
+* Removes bulk move (`* v`) and bulk reschedule (`* t`) as these were
+  quite broken - caused browser tab to freeze. Fix was nontrivial so
+  instead removing this feature.
+
+
+## Version 195
+
+### Fixes ###
+
+* Todoist added some UI that overlaps with the task view, causing
+  cursoring up to not properly scroll tasks into view. This scrolling
+  behavior is now fixed.
+
+* Fixes `escape` to close task view modal. See [#269][].
+
+[#269]: https://github.com/mgsloan/todoist-shortcuts/issues/269
+
+
+## Version 194
+
+### Fixes ###
+
+* Fixes undo shortcuts by simulating press of Todoist's native undo
+  shortcut.
+
+
+## Version 193
+
+### Fixes ###
+
+* Fixes functioning in Firefox. Probably broken by manifest v3 change?
+  See [#267][].
+
+[#267]: https://github.com/mgsloan/todoist-shortcuts/issues/267
+
+
 ## Version 192
 
 ### Fixes ###
