@@ -577,14 +577,21 @@
   function moveToProject() {
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
-      clickTaskMenu(mutateCursor, 'task-overflow-menu-move-to-project', true);
-    } else {
-      withUnique(
-          document,
-          'button[data-action-hint="multi-select-toolbar-project-picker"]',
-          click,
-      );
+      // TODO: Didn't dig into it too much but this seems to be
+      // inscrutably broken.For now instead just selecting a task
+      // and then using the multi-task move which works.
+      //
+      // clickTaskMenu(
+      //     mutateCursor,
+      //     'task-overflow-menu-move-to-project',
+      //     false);
+      selectTask(mutateCursor);
     }
+    withUnique(
+        document,
+        'button[data-action-hint="multi-select-toolbar-project-picker"]',
+        click,
+    );
   }
 
   // Clicks 'Move to project' for the selection, and moves to the
@@ -847,7 +854,7 @@
   function selectAllTasks() {
     const allTasks = getTasks('include-collapsed');
     for (let i = 0; i < allTasks.length; i++) {
-      selectTask(allTasks[i]);
+      setTimeout(() => selectTask(allTasks[i]));
     }
   }
 
@@ -855,7 +862,7 @@
   function selectAllOverdue() {
     for (const task of getTasks()) {
       if (getUniqueClass(task, 'date_overdue')) {
-        selectTask(task);
+        setTimeout(() => selectTask(task));
       }
     }
   }
@@ -868,7 +875,7 @@
     const section = getSection(cursor);
     for (const task of getTasks()) {
       if (getSection(task) === section) {
-        selectTask(task);
+        setTimeout(() => selectTask(task));
       }
     }
   }
@@ -892,7 +899,7 @@
 
   function scrollTaskEditorIntoView() {
     withUniqueClass(document, 'task_editor', all, (editor) => {
-      verticalScrollIntoView(editor, getTopHeight(), 0, true, 0.6);
+      verticalScrollIntoView(editor, 0, true, 0.6);
     });
   }
 
@@ -1204,28 +1211,24 @@
     f(links, current);
   }
 
-  // Trigger undo by simulating a keypress.
   function undo() {
-    todoistShortcut({key: 'z'});
-    /*
-    // Old strategy for clicking the button.
+    // Triggering keypress appears to be broken.
+    // todoistShortcut({key: 'z'});
     withUnique(document, '[role=alert]', (alertContainer) => {
-      let undoButton = null;
       const foundByText = getUniqueTag(
-        alertContainer, 'button', (el) => el.innerText === 'Undo');
+          alertContainer, 'button', (el) => el.innerText === 'Undo');
       if (foundByText) {
         click(foundByText);
         return;
       }
       const foundByLackOfSvg = getUniqueTag(
-        alertContainer, 'button', (el) => el.querySelector('svg') == null);
+          alertContainer, 'button', (el) => el.querySelector('svg') == null);
       if (foundByLackOfSvg) {
         click(foundByLackOfSvg);
         return;
       }
       notifyUser('Didn\'t find undo button, undo only works popup is visible.');
     });
-    */
   }
 
   function sortByDate() {
@@ -1350,7 +1353,7 @@
 
   function focusSearch() {
     // TODO: does it work in other UI languages?
-    withUnique(document, 'nav a[aria-label=Search]', click);
+    withUnique(document, 'nav *[aria-label=Search]', click);
   }
 
   // Open help documentation.
@@ -1706,11 +1709,13 @@
     const allTasks = getTasks('include-collapsed');
     for (const task of allTasks) {
       const key = getTaskKey(task);
-      if (selections[key]) {
-        selectTask(task);
-      } else {
-        deselectTask(task);
-      }
+      setTimeout(() => {
+        if (selections[key]) {
+          selectTask(task);
+        } else {
+          deselectTask(task);
+        }
+      });
     }
   }
 
@@ -2349,6 +2354,7 @@
   }
 
   // Simulate a key press with todoist's global handlers.
+  // eslint-disable-next-line no-unused-vars
   function todoistShortcut(options0) {
     const options = typeof options0 === 'string' ? {key: options0} : options0;
     let ev = new Event('keydown');
@@ -3359,7 +3365,7 @@
             txt = preprocessItemText(rawText);
             initials = getItemInitials(rawText);
           } else {
-            warn('failed to get nav link text for', li);
+            debug('failed to get nav link text for', li);
           }
         }
         // Add some stable sequences for common text
@@ -3403,7 +3409,7 @@
             keepGoing,
           });
         } else {
-          error('Couldn\'t figure out text for', li);
+          debug('Couldn\'t figure out text for', li);
         }
       });
       withQuery(navigationContainer,
@@ -4010,32 +4016,17 @@
   }
 
   function scrollTaskIntoView(task) {
-    verticalScrollIntoView(task, getTopHeight(), 0, false, 0.5);
+    verticalScrollIntoView(task, 0, false, 0.5);
   }
 
   function scrollTaskToBottom(task) {
-    verticalScrollIntoView(task, getTopHeight(), 0, true, 1);
+    verticalScrollIntoView(task, 0, true, 1);
     scrollTaskIntoView(task);
   }
 
   function scrollTaskToTop(task) {
-    verticalScrollIntoView(task, getTopHeight(), 0, true, 0);
+    verticalScrollIntoView(task, 0, true, 0);
     scrollTaskIntoView(task);
-  }
-
-  function getTopHeight() {
-    const upcomingHeader = getUniqueClass(document, 'upcoming_view__calendar');
-    if (upcomingHeader) {
-      return upcomingHeader.clientHeight;
-    }
-
-    const viewHeader = getUniqueClass(document, 'view_header');
-    if (viewHeader) {
-      return viewHeader.clientHeight;
-    }
-
-    warn('No top bar to measure.');
-    return 0;
   }
 
   // Exception thrown by requireCursor.
@@ -4209,7 +4200,7 @@
   // element in the middle of the window, but only if necessary to bring it into
   // view. Does not work well for elements that are larger than half a screen
   // full.
-  function verticalScrollIntoView(el, marginTop, marginBottom, skipCheck, t) {
+  function verticalScrollIntoView(el, marginBottom, skipCheck, t) {
     withViewContent((content) => {
       const oy = pageOffset(el).y - pageOffset(content).y;
       const cy = oy - content.scrollTop;
@@ -4218,7 +4209,7 @@
           content, 'action_head__overflow_actions');
       const overflowHeight = overflowDiv ? overflowDiv.offsetHeight : 0;
       if (skipCheck ||
-          cy < marginTop + el.offsetHeight + overflowHeight ||
+          cy < el.offsetHeight + overflowHeight ||
           cy + h > content.offsetHeight - marginBottom) {
         // TODO: for very large tasks, this could end up with the whole task not
         // being in view.
