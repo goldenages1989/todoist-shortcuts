@@ -1,5 +1,27 @@
 # todoist-shortcuts changelog
 
+## Version 202
+
+* New `>` shortcut for deadline now defocuses the text input so that
+  scheduler shortcuts can be used.
+
+* Brings back support for `m` in scheduler for "Next month".
+
+
+## Version 201
+
+* Adds `>` shortcut for opening current task's deadline editor. See
+  [#274][].
+
+[#274]: https://github.com/mgsloan/todoist-shortcuts/issues/274
+
+
+## Version 200
+
+* Fixes `shift+g` shortcut for switching between upcoming and project
+  view while keeping the same task selected.
+
+
 ## Version 199
 
 * Fixes `v` shortcut (move to project) when there's no selection.

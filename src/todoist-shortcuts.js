@@ -43,6 +43,7 @@
     ['shift+c', openComments],
     ['shift+r', openReminders],
     ['+', openAssign],
+    ['>', openDeadline],
     [['shift+j', 'shift+down'], moveDown],
     [['shift+k', 'shift+up'], moveUp],
     [['shift+h', 'shift+left'], moveOut],
@@ -476,6 +477,19 @@
     }, 50);
   }
 
+  function openDeadline() {
+    const mutateCursor = getCursorToMutate();
+    if (mutateCursor) {
+      clickTaskEdit(mutateCursor);
+      withQuery(document, '[aria-label="Set deadline"]', click);
+      // Todoist seems to put back the focus, so try a few times to blur.
+      blurSchedulerInput();
+      setTimeout(blurSchedulerInput, 20);
+      setTimeout(blurSchedulerInput, 50);
+      setTimeout(blurSchedulerInput, 100);
+    }
+  }
+
   // Click 'today' in schedule. Only does anything if schedule is open.
   function scheduleToday() {
     withScheduler(
@@ -519,8 +533,13 @@
   function scheduleNextMonth() {
     withScheduler(
         'scheduleNextMonth',
-        () => {
-          error('schedule next month no longer supported.');
+        (scheduler) => {
+          withUniqueTag(
+              scheduler,
+              'button',
+              matchingAttr('data-track', 'scheduler|date_shortcut_nextmonth'),
+              click,
+          );
         });
   }
 
@@ -1093,26 +1112,20 @@
     if (viewMode === 'project' && !isFilterView) {
       const dateSpan = getUniqueClass(cursor, 'date');
       if (dateSpan) {
-        withId('top_filters', (topFilters) => {
-          const predicate = matchingAttr('data-track', 'navigation|upcoming');
-          withUniqueTag(topFilters, 'li', predicate, (upcomingLi) => {
-            withUniqueTag(upcomingLi, 'a', all, (upcomingLink) => {
-              // Set a variable that will be read by 'handlePageChange',
-              // which will tell it to select this task.
-              selectAfterNavigate = getTaskId(cursor);
-              click(upcomingLink);
-            });
-          });
+        withUnique(document, '#filter_upcoming a', (upcomingLink) => {
+          // Set a variable that will be read by 'handlePageChange',
+          // which will tell it to select this task.
+          selectAfterNavigate = getTaskId(cursor);
+          click(upcomingLink);
         });
       } else {
         info('Not switching to "Upcoming", because task is not scheduled.');
       }
     } else {
-      let projectEl = null;
-      const projectSpanEl = getUniqueClass(cursor, 'task_list_item__project');
-      if (projectSpanEl) {
-        projectEl = getUniqueTag(projectSpanEl, 'a');
-      }
+      const projectEl = selectUnique(
+          cursor,
+          'a',
+          (linkEl) => linkEl.href && linkEl.href.includes('/project/'));
       if (projectEl) {
         // Set a variable that will be read by 'handlePageChange', which will
         // tell it to select this task.
@@ -2132,7 +2145,7 @@
   function persistentlySelectAfterNavigate(taskId, retriesLeft) {
     const taskEl = getTaskById(taskId, 'ignore-indent');
     debug('Retry attempt to select', taskId,
-        'yielded', newEl, '. ',
+        'yielded', taskEl, '. ',
         retriesLeft, ' retries left.');
     if (taskEl) {
       setCursor(taskEl, 'scroll');
@@ -4755,16 +4768,6 @@
     '  color: #aaa;',
     '}',
     '',
-    '#top_filters > li > .' + TODOIST_SHORTCUTS_TIP + ' {',
-    '  margin-top: 0;',
-    '  margin-left: -20px;',
-    '}',
-    '',
-    '#top_filters .collapse__wrapper .' + TODOIST_SHORTCUTS_TIP + ' {',
-    '  margin-top: 5px;',
-    '  margin-left: -22px;',
-    '}',
-    '',
     '.expansion_panel__toggle .' + TODOIST_SHORTCUTS_TIP + ' {',
     '  margin-top: -3px;',
     '}',
@@ -5204,9 +5207,9 @@
 
   function initializeWhenContentAppears(gas) {
     const content = getViewContent();
-    if (gas > 0 && content === null) {
-      info('Waiting for #content div before initializing todoist-shortcuts');
-      setTimeout(() => initializeWhenContentAppears(gas - 1), 50);
+    if (gas > 0 && content === null && window['TodoistShortcutsMousetrap']) {
+      info('Waiting for #content and mousetrap before initializing');
+      setTimeout(() => initializeWhenContentAppears(gas - 1), 25);
     } else {
       if (content === null) {
         error('Ran out of gas looking for content div. ' +
@@ -5219,5 +5222,5 @@
     }
   }
 
-  initializeWhenContentAppears(100);
+  initializeWhenContentAppears(200);
 })();
