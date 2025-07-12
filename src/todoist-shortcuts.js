@@ -175,9 +175,9 @@
     ['shift+r', taskViewOpenReminders],
     [['e', '#'], taskViewDelete],
     ['shift+c', taskViewToggleTimer],
-    ['ctrl+shift+/', () => {
-      taskViewClose();
-      openRandomTask();
+    ['ctrl+shift+/', async () => {
+      await taskViewClose();
+      await openRandomTask();
     }],
   ];
   const TASK_VIEW_KEYMAP = 'task_view';
@@ -278,10 +278,10 @@
   // Take multiple actions (functions that take no arguments), and run them in
   // sequence.
   // eslint-disable-next-line no-unused-vars
-  function sequence(actions) {
-    return () => {
+  async function sequence(actions) {
+    return async () => {
       for (let i = 0; i < actions.length; i++) {
-        actions[i]();
+        await actions[i]();
       }
     };
   }
@@ -303,13 +303,13 @@
    */
 
   // Move the cursor up and down.
-  function cursorDown() {
+  async function cursorDown() {
     const cursorChanged = modifyCursorIndex((ix) => ix + 1);
     if (!cursorChanged && isUpcomingView()) {
       scrollTaskToTop(getCursor());
     }
   }
-  function cursorUp() {
+  async function cursorUp() {
     const cursorChanged = modifyCursorIndex((ix) => ix - 1);
     if (!cursorChanged && isUpcomingView()) {
       info('scrolling task to bottom');
@@ -318,18 +318,18 @@
   }
 
   // Move the cursor to first / last task.
-  function cursorFirst() {
+  async function cursorFirst() {
     disabledWithLazyLoading('Cursoring first task', () => {
       setCursorToFirstTask('scroll');
     });
   }
-  function cursorLast() {
+  async function cursorLast() {
     disabledWithLazyLoading('Cursoring last task', () => {
       setCursorToLastTask('scroll');
     });
   }
 
-  function cursorUpSection() {
+  async function cursorUpSection() {
     disabledWithLazyLoading('Moving cursor up a section', () => {
       const cursor = requireCursor();
       let section = getSection(cursor);
@@ -353,7 +353,7 @@
     });
   }
 
-  function cursorDownSection() {
+  async function cursorDownSection() {
     disabledWithLazyLoading('Moving cursor down a section', () => {
       const cursor = requireCursor();
       let startSection = getSection(cursor);
@@ -379,15 +379,15 @@
   }
 
   // Edit the task under the cursor.
-  function edit() {
+  async function edit() {
     clickTaskEdit(requireCursor());
   }
 
   // Follow the first link of the task under the cursor.
-  function followLink() {
-    const contentClass = 'task_list_item__content';
-    withUniqueClass(requireCursor(), contentClass, all, (content) => {
-      const link = getFirstTag(content, 'a');
+  async function followLink() {
+    const contentQuery = '.task_list_item__content';
+    withUnique(requireCursor(), contentQuery, all, (content) => {
+      const link = getFirst(content, 'a');
       if (link) {
         if (IS_CHROME) {
           const middleClick =
@@ -403,109 +403,110 @@
   }
 
   // Toggles selection of the task focused by the cursor.
-  function toggleSelect() {
+  async function toggleSelect() {
     toggleSelectTask(requireCursor());
   }
 
   // Selects the task focused by the cursor.
   // eslint-disable-next-line no-unused-vars
-  function select() {
+  async function select() {
     selectTask(requireCursor());
   }
 
   // Deselects the task focused by the cursor.
   // eslint-disable-next-line no-unused-vars
-  function deselect() {
+  async function deselect() {
     deselectTask(requireCursor());
   }
 
   // Clicks the 'schedule' link when tasks are selected.  If
   // WHAT_CURSOR_APPLIES_TO is 'all' or 'most', then instead applies to the
   // cursor if there is no selection.
-  function schedule() {
+  async function schedule() {
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
-      clickTaskSchedule(mutateCursor);
-      blurSchedulerInput();
+      await clickTaskSchedule(mutateCursor);
+      await blurSchedulerInput();
     } else {
-      const query = 'button[data-action-hint="multi-select-toolbar-scheduler"]';
-      withUnique(document, query, (button) => {
-        click(button);
-        blurSchedulerInput();
-      });
+      clickUniqueRetrying(
+          document,
+          'button[data-action-hint="multi-select-toolbar-scheduler"]');
+      await blurSchedulerInput();
     }
   }
 
   // Edits the task under the cursor and focuses the textual representation of
   // when the task is scheduled. Only works for the cursor, not for the
   // selection.
-  function scheduleText() {
+  async function scheduleText() {
     const scheduler = findScheduler();
     if (scheduler) {
-      withTag(scheduler, 'input', (el) => el.focus() );
+      withAll(scheduler, 'input', all, (el) => el.focus() );
       return;
     }
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
-      clickTaskSchedule(mutateCursor);
+      await clickTaskSchedule(mutateCursor);
     } else {
-      withUnique(
+      clickUnique(
           document,
-          'button[data-action-hint="multi-select-toolbar-scheduler"]',
-          click,
-      );
+          'button[data-action-hint="multi-select-toolbar-scheduler"]');
     }
   }
 
-  function scheduleTime() {
+  async function scheduleTime() {
     if (!findScheduler()) {
       scheduleText();
     }
     setTimeout(() => {
       // TODO: less fragile way to find the "Time" button than relying
       // on no other buttons having this attribute.
-      const success = withUnique(document, '.scheduler button[aria-controls]',
+      const success = withUnique(
+          document,
+          '.scheduler button[aria-controls]',
+          all,
           (button) => {
             click(button);
             return true;
           });
       // Fallback on english text matching if the above doesn't work.
       if (!success) {
-        withUniqueTag(findScheduler(), 'button', matchingText('Time'), click);
+        clickUnique(findScheduler(), 'button', matchingText('Time'));
       }
       focusTimeInput();
     }, 50);
   }
 
-  function openDeadline() {
+  async function openDeadline() {
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
       clickTaskEdit(mutateCursor);
-      withQuery(document, '[aria-label="Set deadline"]', click);
+      await clickAllRetrying(document, '[aria-label="Set deadline"]');
       // Todoist seems to put back the focus, so try a few times to blur.
-      blurSchedulerInput();
-      setTimeout(blurSchedulerInput, 20);
-      setTimeout(blurSchedulerInput, 50);
-      setTimeout(blurSchedulerInput, 100);
+      await blurSchedulerInput();
+      sleep(20);
+      await blurSchedulerInput();
+      sleep(50);
+      await blurSchedulerInput();
+      sleep(100);
+      await blurSchedulerInput();
     }
   }
 
   // Click 'today' in schedule. Only does anything if schedule is open.
-  function scheduleToday() {
+  async function scheduleToday() {
     withScheduler(
         'scheduleToday',
         (scheduler) => {
-          withUniqueTag(
+          clickUnique(
               scheduler,
               'button',
-              matchingAttr('data-track', 'scheduler|date_shortcut_today'),
-              click,
-          );
+              matchingAttr('data-track', 'scheduler|date_shortcut_today'));
         });
   }
 
   // Click 'next week' in schedule. Only does anything if schedule is open.
-  function scheduleNextWeek() {
+  async function scheduleNextWeek() {
     const date = new Date();
     const day = date.getDay();
     if (day === 0) {
@@ -516,51 +517,46 @@
   }
 
   // Click 'next weekend' in schedule. Only does anything if schedule is open.
-  function scheduleNextWeekend() {
+  async function scheduleNextWeekend() {
     withScheduler(
         'scheduleNextWeekend',
         (scheduler) => {
-          withUniqueTag(
+          clickUnique(
               scheduler,
               'button',
-              matchingAttr('data-track', 'scheduler|date_shortcut_nextweekend'),
-              click,
-          );
+              matchingAttr('data-track',
+                  'scheduler|date_shortcut_nextweekend'));
         });
   }
 
   // Click 'next month' in schedule. Only does anything if schedule is open.
-  function scheduleNextMonth() {
+  async function scheduleNextMonth() {
     withScheduler(
         'scheduleNextMonth',
         (scheduler) => {
-          withUniqueTag(
+          clickUnique(
               scheduler,
               'button',
-              matchingAttr('data-track', 'scheduler|date_shortcut_nextmonth'),
-              click,
-          );
+              matchingAttr('data-track', 'scheduler|date_shortcut_nextmonth'));
         });
   }
 
   // Clicks 'postpone' in scheduler.
-  function schedulePostpone() {
+  async function schedulePostpone() {
     withScheduler(
         'schedulePostpone',
         (scheduler) => {
-          withUniqueTag(
+          clickUnique(
               scheduler,
               'button',
               matchingAttr('data-track',
-                  'scheduler|date_shortcut_postpone'),
-              click,
-          );
+                  'scheduler|date_shortcut_postpone'));
         });
   }
 
   // Clicks date on scheduler 1-9 days in the future
   function schedulePlusN(n) {
-    return () => {
+    return async () => {
       const date = new Date();
       date.setDate(date.getDate() + n);
       buttonAriaLabel = dateToIsoFormatUsingCurrentTimezone(date);
@@ -568,91 +564,80 @@
       withScheduler(
           'schedulePlusN',
           (scheduler) => {
-            withUniqueTag(
+            clickUnique(
                 scheduler,
                 'button',
-                matchingAttr('aria-label', buttonAriaLabel),
-                click,
-            );
+                matchingAttr('aria-label', buttonAriaLabel));
           });
     };
   }
 
   // Click 'no due date' in schedule. Only does anything if schedule is open.
-  function unschedule() {
+  async function unschedule() {
     withScheduler(
         'unschedule',
         (scheduler) => {
-          withUniqueTag(
+          clickUnique(
               scheduler,
               'button',
-              matchingAttr('data-track', 'scheduler|date_shortcut_nodate'),
-              click,
-          );
+              matchingAttr('data-track', 'scheduler|date_shortcut_nodate'));
         });
   }
 
   // Clicks 'Move to project' for the selection. If WHAT_CURSOR_APPLIES_TO is
   // 'all' or 'most', then instead applies to the cursor if there is no
   // selection.
-  function moveToProject() {
+  async function moveToProject() {
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
-      // TODO: Didn't dig into it too much but this seems to be
-      // inscrutably broken.For now instead just selecting a task
-      // and then using the multi-task move which works.
-      //
-      // clickTaskMenu(
-      //     mutateCursor,
-      //     'task-overflow-menu-move-to-project',
-      //     false);
-      selectTask(mutateCursor);
+      await clickTaskMenu(
+          mutateCursor,
+          'task-overflow-menu-move-to-project',
+          false);
+    } else {
+      clickUnique(
+          document,
+          'button[data-action-hint="multi-select-toolbar-project-picker"]');
     }
-    withUnique(
-        document,
-        'button[data-action-hint="multi-select-toolbar-project-picker"]',
-        click,
-    );
   }
 
   // Clicks 'Move to project' for the selection, and moves to the
   // named project.
   // eslint-disable-next-line no-unused-vars
   function moveToProjectNamed(projectName) {
-    return () => {
+    return async () => {
       const mutateCursor = getCursorToMutate();
       if (mutateCursor) {
-        clickTaskMenu(
+        await clickTaskMenu(
             mutateCursor,
             'task-overflow-menu-move-to-project',
             false);
-        withUniqueClass(
+        withUnique(
             document,
-            'popper',
+            '.popper',
             hasChild('[aria-label="'+projectName+'"]'),
             (menu) => {
-              withUniqueTag(
+              clickUnique(
                   menu,
                   'li',
-                  matchingAttr('aria-label', projectName),
-                  click);
+                  matchingAttr('aria-label', projectName));
             });
       } else {
         withUnique(
             document,
             'button[data-action-hint="multi-select-toolbar-project-picker"]',
+            all,
             (menu) => {
               click(menu);
-              withUniqueClass(
+              withUnique(
                   document,
-                  'popper',
+                  '.popper',
                   hasChild('[aria-label="'+projectName+'"]'),
                   (menu) => {
-                    withUniqueTag(
+                    clickUnique(
                         menu,
                         'li',
-                        matchingAttr('aria-label', projectName),
-                        click);
+                        matchingAttr('aria-label', projectName));
                   });
             },
         );
@@ -667,31 +652,26 @@
   // NOTE: this returns a function so that it can be used conveniently in the
   // keybindings.
   function setPriority(level) {
-    return () => {
+    return async () => {
       const mutateCursor = getCursorToMutate();
       if (mutateCursor) {
         clickTaskEdit(mutateCursor);
-        withQuery(document,
-            '[data-action-hint="task-actions-priority-picker"]',
-            click);
-        withUniqueClass(document, 'priority_picker', all, (menu) => {
-          clickPriorityMenu(menu, level);
-        });
+        await clickUniqueRetrying(
+            document,
+            '[data-action-hint="task-actions-priority-picker"]');
+        const menu = await getUniqueRetrying(document, '.priority_picker');
+        await clickPriorityMenu(menu, level);
         // Click save button.
-        withUnique(
+        await clickUniqueRetrying(
             document,
             'div[data-testid="task-editor-action-buttons"] ' +
-            'button[type="submit"]',
-            click,
-        );
+            'button[type="submit"]');
       } else {
-        withUnique(
+        await clickUniqueRetrying(
             document,
-            'button[data-action-hint="multi-select-toolbar-priority-picker"]',
-            click,
-        );
-        withUniqueClass(document, 'priority_picker', all, (menu) => {
-          clickPriorityMenu(menu, level);
+            'button[data-action-hint="multi-select-toolbar-priority-picker"]');
+        await withUnique(document, '.priority_picker', all, async (menu) => {
+          await clickPriorityMenu(menu, level);
         });
       }
     };
@@ -703,7 +683,7 @@
   // NOTE: this returns a function so that it can be used conveniently in the
   // keybindings.
   function selectPriority(level) {
-    return () => {
+    return async () => {
       const actualLevel = invertPriorityLevel(level);
       const allTasks = getTasks('include-collapsed');
       const selected = getSelectedTaskKeys();
@@ -722,15 +702,15 @@
 
   // Mark all the tasks as completed. If WHAT_CURSOR_APPLIES_TO is 'all', then
   // instead applies to the cursor if there is no selection.
-  function done() {
+  async function done() {
     const mutateCursor = getCursorToMutate('dangerous');
     if (mutateCursor) {
       clickTaskDone(mutateCursor);
     } else {
-      withUnique(
+      clickUnique(
           openMoreMenu(),
           '[data-action-hint="multi-select-toolbar-overflow-menu-complete"]',
-          click,
+          all,
       );
     }
   }
@@ -739,69 +719,60 @@
   // todoist prompts, this is not treated as a 'dangerous' action.  As
   // such, if WHAT_CURSOR_APPLIES_TO is 'all' or 'most', then instead
   // applies to the cursor if there is no selection.
-  function deleteTasks() {
+  async function deleteTasks() {
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
-      clickTaskMenu(mutateCursor, 'task-overflow-menu-delete', false);
+      await clickTaskMenu(mutateCursor, 'task-overflow-menu-delete', false);
     } else {
-      withUnique(
+      clickUnique(
           openMoreMenu(),
-          '[data-action-hint="multi-select-toolbar-overflow-menu-delete"]',
-          click,
-      );
+          '[data-action-hint="multi-select-toolbar-overflow-menu-delete"]');
     }
   }
 
-  function duplicateTasks() {
+  async function duplicateTasks() {
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
-      clickTaskMenu(mutateCursor, 'task-overflow-menu-duplicate', false);
+      await clickTaskMenu(mutateCursor, 'task-overflow-menu-duplicate', false);
     } else {
-      withUnique(
+      clickUnique(
           openMoreMenu(),
           '[data-action-hint="multi-select-toolbar-overflow-menu-duplicate"]',
-          click,
       );
     }
   }
 
   // Opens the label toggling menu.
-  function openLabelMenu() {
+  async function openLabelMenu() {
     if (isEmptyMap(getSelectedTaskKeys())) {
-      select();
+      await select();
     }
-    withUniqueClass(document, 'multi_select_toolbar', all, (toolbar) => {
-      withUniqueTag(
+    withUnique(document, '.multi_select_toolbar', all, (toolbar) => {
+      clickUnique(
           toolbar,
           'button',
-          matchingAction('multi-select-toolbar-label-picker'),
-          click,
-      );
+          matchingAction('multi-select-toolbar-label-picker'));
     });
   }
 
-  const TIMER_CLASSES = [
-    'toggl-button',
-    'clockify-button-inactive',
-    'clockify-button-active',
-  ];
+  const TIMER_QUERY =
+    '.toggl-button, .clockify-button-inactive, .clockify-button-active';
 
   // If toggl-button or clockify extension is in use, clicks the
   // button element in the task.
-  function toggleTimer() {
-    withUniqueClass(requireCursor(), TIMER_CLASSES, all, click);
+  async function toggleTimer() {
+    clickUnique(requireCursor(), TIMER_QUERY, all);
   }
 
   // Toggles collapse / expand of a task, if it has children.
-  function toggleCollapse(task) {
-    withUnique(
-      task ? task : requireCursor(),
-      '[data-action-hint=task-toggle-collapse]',
-      click);
+  async function toggleCollapse(task) {
+    clickUnique(
+        task ? task : requireCursor(),
+        '[data-action-hint=task-toggle-collapse]');
   }
 
   // Collapse cursor. If it is already collapsed, select and collapse parent.
-  function cursorLeft() {
+  async function cursorLeft() {
     if (checkTaskExpanded(requireCursor())) {
       toggleCollapse();
     } else {
@@ -810,7 +781,7 @@
   }
 
   // Expand cursor and move down.
-  function cursorRight() {
+  async function cursorRight() {
     if (checkTaskCollapsed(requireCursor())) {
       toggleCollapse();
       cursorDown();
@@ -820,14 +791,14 @@
   // Collapses or expands task under the cursor, that have children. Does
   // nothing if it's already in the desired state.
 
-  function collapse(task0) {
+  async function collapse(task0) {
     const task = task0 ? task0 : requireCursor();
     if (checkTaskExpanded(task)) {
       toggleCollapse(task);
     }
   }
   // eslint-disable-next-line no-unused-vars
-  function expand(task0) {
+  async function expand(task0) {
     const task = task0 ? task0 : requireCursor();
     if (checkTaskCollapsed(task)) {
       toggleCollapse(task);
@@ -835,7 +806,7 @@
   }
 
   // Move selection to parent project.
-  function selectAndCollapseParent() {
+  async function selectAndCollapseParent() {
     const cursor = requireCursor();
     const tasks = getTasks();
     for (let i = 0; i < tasks.length; i++) {
@@ -843,7 +814,7 @@
       if (task === cursor) {
         for (let j = i; j >= 0; j--) {
           task = tasks[j];
-          if (getUniqueClass(task, 'down')) {
+          if (getUnique(task, '.down')) {
             setCursor(task, 'scroll');
             toggleCollapse(task);
             break;
@@ -859,20 +830,20 @@
   }
 
   // Collapses or expands all tasks.
-  function collapseAll() {
-    repeatedlyClickArrows('down');
+  async function collapseAll() {
+    repeatedlyClickArrows('.down');
   }
-  function expandAll() {
-    repeatedlyClickArrows('right');
+  async function expandAll() {
+    repeatedlyClickArrows('.right');
   }
 
   // Clears all selections.
-  function deselectAllTasks() {
+  async function deselectAllTasks() {
     click(document.body);
   }
 
   // Selects all tasks, even those hidden by collapsing.
-  function selectAllTasks() {
+  async function selectAllTasks() {
     const allTasks = getTasks('include-collapsed');
     for (let i = 0; i < allTasks.length; i++) {
       setTimeout(() => selectTask(allTasks[i]));
@@ -880,15 +851,15 @@
   }
 
   // Selects all overdue tasks.
-  function selectAllOverdue() {
+  async function selectAllOverdue() {
     for (const task of getTasks()) {
-      if (getUniqueClass(task, 'date_overdue')) {
+      if (getUnique(task, '.date_overdue')) {
         setTimeout(() => selectTask(task));
       }
     }
   }
 
-  function selectSection() {
+  async function selectSection() {
     const cursor = getCursor();
     if (!cursor) {
       return;
@@ -901,25 +872,25 @@
     }
   }
 
-  function addTaskBottom() {
+  async function addTaskBottom() {
     addToSectionContaining(getCursor());
   }
 
-  function addTaskTop() {
+  async function addTaskTop() {
     if (viewMode === 'agenda') {
       quickAdd();
     } else {
       const tasks = getTasks();
       if (tasks.length > 0) {
-        addAboveTask(tasks[0]);
+        await addAboveTask(tasks[0]);
       } else {
         quickAdd();
       }
     }
   }
 
-  function scrollTaskEditorIntoView() {
-    withUniqueClass(document, 'task_editor', all, (editor) => {
+  async function scrollTaskEditorIntoView() {
+    withUnique(document, '.task_editor', all, (editor) => {
       verticalScrollIntoView(editor, 0, true, 0.6);
     });
   }
@@ -927,31 +898,33 @@
   // Add a task above / below cursor. Unfortunately these options do not exist
   // in agenda mode, so in that case, instead it is added to the current
   // section.
-  function addAbove() {
-    addAboveTask(getCursor());
+  async function addAbove() {
+    await addAboveTask(getCursor());
   }
-  function addBelow() {
-    addBelowTask(getCursor());
+
+  async function addBelow() {
+    await addBelowTask(getCursor());
   }
 
   // Open comments sidepane
-  function openComments() {
+  async function openComments() {
     openTaskView();
-    taskViewComments();
+    await getUniqueRetrying(document, TASK_VIEW_SELECTOR);
+    await taskViewComments();
   }
 
   // Open reminders dialog
-  function openReminders() {
-    clickTaskMenu(requireCursor(), 'task-overflow-menu-reminders');
+  async function openReminders() {
+    await clickTaskMenu(requireCursor(), 'task-overflow-menu-reminders');
   }
 
   // Open assign dialog
-  function openAssign() {
+  async function openAssign() {
     const mutateCursor = getCursorToMutate();
     if (mutateCursor) {
-      withTaskHovered(mutateCursor, () => {
+      await withTaskHovered(mutateCursor, () => {
         const assignButton =
-              getUniqueClass(mutateCursor, 'task_list_item__person_picker');
+              getUnique(mutateCursor, '.task_list_item__person_picker');
         if (assignButton) {
           click(assignButton);
         } else {
@@ -959,19 +932,18 @@
         }
       });
     } else {
-      withUnique(
+      clickUnique(
           openMoreMenu(),
           '[data-action-hint="multi-select-toolbar-overflow-menu-asssign"]',
-          click,
       );
     }
   }
 
   // Open the task view sidepane.
-  function openTaskView() {
-    withUniqueClass(
+  async function openTaskView() {
+    withUnique(
         requireCursor(),
-        ['content', 'task_list_item__body'],
+        '.content, .task_list_item__body',
         all,
         click,
     );
@@ -979,22 +951,21 @@
 
   // Click somewhere on the page that shouldn't do anything in particular except
   // closing context menus.  Also clicks 'Cancel' on any task adding.
-  function closeContextMenus() {
+  async function closeContextMenus() {
     for (let i = 0; i < 100; i++) {
-      const popperOverlay = getLastClass(document, 'popper__overlay');
+      const popperOverlay = getLast(document, '.popper__overlay');
       if (popperOverlay) {
-        popperOverlay.click();
+        click(popperOverlay);
       } else {
         break;
       }
       if (i == 99) {
         warn('Tried a lot to close poppers.');
-        notifyUser('Closing popups is currently broken. Hopefully fixed soon!');
       }
     }
     click(document.body);
-    withClass(document, 'manager', (manager) => {
-      const cancelBtn = getUniqueClass(manager, 'cancel');
+    withAll(document, '.manager', all, (manager) => {
+      const cancelBtn = getUnique(manager, '.cancel');
       if (cancelBtn) {
         click(cancelBtn);
       }
@@ -1002,20 +973,16 @@
     // Close windows with close buttons, particularly move-to-project
     //
     // (probably old)
-    withClass(document, 'GB_window', (gbw) => {
-      withClass(gbw, 'close', (close) => {
-        withTag(close, 'div', click);
-      });
-    });
+    clickAll(document, '.GB_window .close div');
     // Close windows with close buttons
-    withQuery(document, '[aria-label="Close task"]', click);
-    withQuery(document, '[aria-label="Close modal"]', click);
+    clickAll(document, '[aria-label="Close task"]');
+    clickAll(document, '[aria-label="Close modal"]');
     // Close todoist-shortcuts' modals
-    withClass(document, 'ts-modal-close', click);
+    clickAll(document, '.ts-modal-close');
   }
 
-  function openMoreActionsMenu() {
-    withUniqueClass(document, 'view_header__actions', all, (header) => {
+  async function openMoreActionsMenu() {
+    withUnique(document, 'header[aria-label^="Header:"]', all, (header) => {
       for (const button of selectAll(header, 'button')) {
         // If it contains 3 svg circles, it's the more menu
         // button. Sad that there is no other identifying
@@ -1029,17 +996,19 @@
     });
   }
 
-  function openCurrentProjectLeftNavMenu() {
+  // TODO: Fix this
+  // eslint-disable-next-line no-unused-vars
+  async function openCurrentProjectLeftNavMenu() {
     if (leftNavIsHidden()) {
       toggleLeftNav();
     }
     const currentPath = document.location.pathname;
-    const currentProject = selectUnique(
+    const currentProject = getUnique(
         document, '#left-menu-projects-panel li', (project) => {
-          const link = selectUnique(project, 'a');
+          const link = getUnique(project, 'a');
           // If a project doesn't have an anchor tag, it's hidden and
           // we want to skip it.
-          return link && link.href.endsWith(currentPath);
+          return link !== null && link.href.endsWith(currentPath);
         });
     if (!currentProject) {
       throw new Error('Could not find current project.');
@@ -1069,7 +1038,7 @@
 
   // Switches to a navigation mode, where navigation targets are annotated
   // with letters to press to click.
-  function navigate() {
+  async function navigate() {
     withNavigationContainer((listHolder) => {
       openedLeftNavForNavigate = false;
       if (leftNavIsHidden()) {
@@ -1097,7 +1066,7 @@
   }
 
   function withNavigationContainer(f) {
-    withUnique(document, '[role=navigation]', f);
+    withUnique(document, '[role=navigation]', all, f);
   }
 
   // When viewing something other than a project, and the current task has a
@@ -1106,13 +1075,13 @@
   // When viewing a project, and the current task has a time associated with
   // it that is within the next 7 days, then it jumps to "next 7 days" and
   // reselects the task.
-  function navigateToTask() {
+  async function navigateToTask() {
     const cursor = requireCursor();
     const isFilterView = getIsFilterView();
     if (viewMode === 'project' && !isFilterView) {
-      const dateSpan = getUniqueClass(cursor, 'date');
+      const dateSpan = getUnique(cursor, '.date');
       if (dateSpan) {
-        withUnique(document, '#filter_upcoming a', (upcomingLink) => {
+        withUnique(document, '#filter_upcoming a', all, (upcomingLink) => {
           // Set a variable that will be read by 'handlePageChange',
           // which will tell it to select this task.
           selectAfterNavigate = getTaskId(cursor);
@@ -1122,7 +1091,7 @@
         info('Not switching to "Upcoming", because task is not scheduled.');
       }
     } else {
-      const projectEl = selectUnique(
+      const projectEl = getUnique(
           cursor,
           'a',
           (linkEl) => linkEl.href && linkEl.href.includes('/project/'));
@@ -1140,10 +1109,9 @@
 
   // Navigate to left menu item based on ID (`today`, `upcoming`, etc).
   // eslint-disable-next-line no-unused-vars
-  function navigateToLeftMenuItem(itemId) {
+  async function navigateToLeftMenuItem(itemId) {
     return () => {
-      const sections = ['top', 'favorites', 'projects'];
-      withLeftMenuItems(sections, (menuItems, current) => {
+      withLeftMenuItems((menuItems, current) => {
         for (const menuItem of menuItems) {
           if (menuItem.href.indexOf(itemId) > 0) {
             click(menuItem);
@@ -1154,7 +1122,7 @@
   }
 
   // Cycles down through menu items.
-  function nextLeftMenuItem() {
+  async function nextLeftMenuItem() {
     withLeftMenuItems((menuItems, current) => {
       // If on the last item, or no item, select the first item.
       if (current >= menuItems.length - 1 || current < 0) {
@@ -1167,7 +1135,7 @@
   }
 
   // Cycles up through top sections (inbox / today / next 7 days + favorites).
-  function prevLeftMenuItem() {
+  async function prevLeftMenuItem() {
     withLeftMenuItems((menuItems, current) => {
       // If on the first item, or no item, select the last item.
       if (current <= 0) {
@@ -1196,11 +1164,11 @@
     let current = -1;
     const allCurrents = [];
     for (const container of containers) {
-      withTag(container, 'li', (item) => {
+      withAll(container, 'li', all, (item) => {
         const link =
-              getFirstClass(item, 'item_content') ||
-              getFirstTag(item, 'a') ||
-              getFirstClass(item, 'name');
+              getFirst(item, '.item_content') ||
+              getFirst(item, 'a') ||
+              getFirst(item, '.name');
         if (hidden(item)) {
         } else if (!link) {
           warn('Didn\'t find link in', item.innerHTML);
@@ -1226,17 +1194,17 @@
     f(links, current);
   }
 
-  function undo() {
+  async function undo() {
     // Triggering keypress appears to be broken.
     // todoistShortcut({key: 'z'});
-    withUnique(document, '[role=alert]', (alertContainer) => {
-      const foundByText = getUniqueTag(
+    withUnique(document, '[role=alert]', all, (alertContainer) => {
+      const foundByText = getUnique(
           alertContainer, 'button', (el) => el.innerText === 'Undo');
       if (foundByText) {
         click(foundByText);
         return;
       }
-      const foundByLackOfSvg = getUniqueTag(
+      const foundByLackOfSvg = getUnique(
           alertContainer, 'button', (el) => el.querySelector('svg') == null);
       if (foundByLackOfSvg) {
         click(foundByLackOfSvg);
@@ -1246,97 +1214,13 @@
     });
   }
 
-  function sortByDate() {
-    sortingCurrentlyBroken();
-    /*
-    if (resetIfSortTypeAlready('date')) return;
-    openSortMenu();
-    withUnique(document, 'li[data-value="DUE_DATE"]', click);
-    closeContextMenus();
-    */
+  async function openNotifications() {
+    clickUnique(document, 'a[aria-label="Notifications"]');
   }
 
-  function sortByPriority() {
-    sortingCurrentlyBroken();
-    /*
-    if (resetIfSortTypeAlready('priority')) return;
-    openSortMenu();
-    withUnique(document, 'li[data-value="PRIORITY"]', click);
-    withUniqueClass(
-        document,
-        'menu_item',
-        matchingAttr('aria-labelledby', 'view_menu__order'),
-        click);
-    withUnique(document, 'li[data-value="DESC"]', click);
-    closeContextMenus();
-    */
-  }
-
-  function sortByName() {
-    sortingCurrentlyBroken();
-    /*
-    if (resetIfSortTypeAlready('alphabetically')) return;
-    openSortMenu();
-    withUnique(document, 'li[data-value="ALPHABETICALLY"]', click);
-    closeContextMenus();
-    */
-  }
-
-  function sortByAssignee() {
-    sortingCurrentlyBroken();
-    /*
-    if (resetIfSortTypeAlready('assignee')) return;
-    openSortMenu();
-    withUnique(document, 'li[data-value="ASSIGNEE"]', click);
-    closeContextMenus();
-    */
-  }
-
-  function sortingCurrentlyBroken() {
-    notifyUser(
-        'Sort keybindings are currently not working. Hopefully fixed soon!');
-  }
-
-  /*
-  function resetIfSortTypeAlready(type) {
-    const changeSortButton = selectUnique(
-        document, 'button[aria-label="Change sorting options"]');
-    if (changeSortButton) {
-      if (changeSortButton.innerText.includes(type)) {
-        const resetSortButton = selectUnique(
-            document, 'button[aria-label="Reset sorting options"]');
-        if (resetSortButton) {
-          click(resetSortButton);
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  function openSortMenu() {
-    withUniqueClass(document, 'view_header__actions', all, (actions) => {
-      // Ooof, such a terrible hack.
-      withUniqueTag(
-          actions, 'path', matchingAttr('d', SORT_SVG_PATH), (svgPath) => {
-            click(svgPath.parentElement);
-          });
-    });
-    withUniqueClass(
-        document,
-        'menu_item',
-        matchingAttr('aria-labelledby', 'view_menu__sort_by'),
-        click);
-  }
-  */
-
-  function openNotifications() {
-    withUnique(document, '[aria-owns="notification_popup"]', click);
-  }
-
-  function quickAdd() {
-    withUniqueClass(document, 'app-sidebar-container', all, (appSidebar) =>
-      withUniqueTag(
+  async function quickAdd() {
+    withUnique(document, '.app-sidebar-container', all, (appSidebar) =>
+      withUnique(
           appSidebar,
           'button',
           (button) => button.innerText.includes('Add task'),
@@ -1345,7 +1229,7 @@
   }
 
   function leftNavIsHidden() {
-    const appSidebar = getUniqueClass(document, 'app-sidebar-container');
+    const appSidebar = getUnique(document, '.app-sidebar-container');
     if (appSidebar) {
       // TODO: Fix this on firefox - always fails.
       try {
@@ -1359,24 +1243,23 @@
     return false;
   }
 
-  function toggleLeftNav() {
-    withUnique(
+  async function toggleLeftNav() {
+    clickUnique(
         document,
-        'button[aria-controls=sidebar], .top_bar_btn.left_menu_toggle',
-        click);
+        'button[aria-controls=sidebar], .top_bar_btn.left_menu_toggle');
   }
 
-  function focusSearch() {
+  async function focusSearch() {
     // TODO: does it work in other UI languages?
-    withUnique(document, 'nav *[aria-label=Search]', click);
+    clickUnique(document, 'nav *[aria-label=Search]');
   }
 
   // Open help documentation.
-  function openHelpModal() {
-    let modal = getUniqueClass(document, TODOIST_SHORTCUTS_HELP);
+  async function openHelpModal() {
+    let modal = getUnique(document, '.' + TODOIST_SHORTCUTS_HELP);
     if (modal === null) {
       createHelpModal();
-      modal = getUniqueClass(document, TODOIST_SHORTCUTS_HELP);
+      modal = getUnique(document, '.' + TODOIST_SHORTCUTS_HELP);
     }
     modal.style.display = 'inline-block';
   }
@@ -1432,15 +1315,15 @@
 
   // Click "import from template" in project menu
   // eslint-disable-next-line no-unused-vars
-  function importFromTemplate() {
-    withClass(document, 'menu_item', (tr) => {
+  async function importFromTemplate() {
+    withAll(document, '.menu_item', all, (tr) => {
       const predicate =
             matchingAttr('data-track', 'project|actions_import_from_template');
-      withUniqueTag(tr, 'td', predicate, (foundItem) => {
+      withUnique(tr, 'td', predicate, (foundItem) => {
         click(foundItem);
         let foundInput = null;
-        withClass(document, 'file_input_container', (container) => {
-          withTag(container, 'input', (input) => {
+        withAll(document, '.file_input_container', all, (container) => {
+          withAll(container, 'input', all, (input) => {
             foundInput = input;
           });
         });
@@ -1453,7 +1336,7 @@
     });
   }
 
-  function sync() {
+  async function sync() {
     let lastSynced = getById('last_synced');
     if (!lastSynced) {
       withId('help_btn', click);
@@ -1471,145 +1354,138 @@
   const COMMAND_MENU_SELECTOR =
         'button[aria-labelledby="command-menu-description"]';
 
-  function openCommandMenu() {
-    const button = selectUnique(document, COMMAND_MENU_SELECTOR);
+  async function openCommandMenu() {
+    const button = getUnique(document, COMMAND_MENU_SELECTOR);
     if (button) {
       click(button);
     } else {
       withId('help_btn', click);
-      withUnique(document, COMMAND_MENU_SELECTOR, click);
+      clickUnique(document, COMMAND_MENU_SELECTOR);
     }
   }
 
   const TASK_VIEW_SELECTOR = 'div[data-testid="task-details-modal"]';
 
-  function taskViewEdit() {
-    withUnique(document, '.task-detail-editor-container .task_content', click);
+  async function taskViewEdit() {
+    clickUnique(document, '.task-detail-editor-container .task_content');
   }
 
-  function taskViewDone() {
-    withUnique(document, '[data-action-hint=task-detail-view-complete]', click);
+  async function taskViewDone() {
+    clickUnique(document, '[data-action-hint=task-detail-view-complete]');
   }
 
-  function taskViewClose() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUnique(taskView, 'button[aria-label="Close task"]', click);
+  async function taskViewClose() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, 'button[aria-label="Close task"]');
     });
   }
 
-  function taskViewParent() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUnique(
-          taskView, 'div[data-testid="task-detail-breadcrumbs"] > a', click);
+  async function taskViewParent() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, 'div[data-testid="task-detail-breadcrumbs"] > a');
     });
   }
 
-  function taskViewNext() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUnique(taskView, '[aria-label="Next task"', click);
+  async function taskViewNext() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, '[aria-label="Next task"');
     });
   }
 
-  function taskViewComments() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUnique(
-          taskView,
-          'button[data-testid="open-comment-editor-button"]',
-          click);
+  async function taskViewComments() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, 'button[data-testid="open-comment-editor-button"]');
     });
   }
 
-  function taskViewPrevious() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUnique(taskView, '[aria-label="Previous task"', click);
+  async function taskViewPrevious() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, '[aria-label="Previous task"');
     });
   }
 
-  function taskViewAddSubtask() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUniqueTag(taskView, 'button', matchingText('Add sub-task'), click);
+  async function taskViewAddSubtask() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, 'button', matchingText('Add sub-task'));
     });
   }
 
-  function taskViewSchedule() {
+  async function taskViewSchedule() {
     taskViewScheduleText();
-    blurSchedulerInput();
+    await blurSchedulerInput();
   }
 
-  function taskViewScheduleText() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUniqueClass(taskView, 'task-due-date-button', all, click);
+  async function taskViewScheduleText() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, '.task-due-date-button');
     });
   }
 
-  function taskViewOpenAssign() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUniqueTag(taskView, 'span', matchingText('Assignee'), click);
+  async function taskViewOpenAssign() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, 'span', matchingText('Assignee'));
     });
   }
 
-  function taskViewMoveToProject() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUnique(taskView, 'button[aria-label="Select a project"]', click);
+  async function taskViewMoveToProject() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, 'button[aria-label="Select a project"]');
     });
   }
 
-  function taskViewLabel() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUniqueTag(taskView, 'span', matchingText('Labels'), click);
+  async function taskViewLabel() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, 'span', matchingText('Labels'));
     });
   }
 
   function taskViewSetPriority(level) {
-    return () => {
-      withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
+    return async () => {
+      withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
         const actualLevel = invertPriorityLevel(level);
-        if (!getUniqueClass(document, 'priority_picker')) {
-          withUnique(taskView,
-              '[data-icon-name=priority-icon]',
-              click);
+        if (!getUnique(document, '.priority_picker')) {
+          clickUnique(taskView,
+              '[data-icon-name=priority-icon]');
         }
-        withUniqueClass(document, 'priority_picker', all, (picker) => {
-          withUnique(
+        withUnique(document, '.priority_picker', all, (picker) => {
+          clickUnique(
               picker,
-              '[data-action-hint="task-actions-priority-' + actualLevel + '"]',
-              click,
-          );
+              '[data-action-hint="task-actions-priority-' + actualLevel + '"]');
         });
       });
     };
   }
 
-  function taskViewOpenReminders() {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
-      withUniqueTag(taskView, 'span', matchingText('Reminders'), click);
-    });
-  }
-
-  function taskViewDelete() {
-    withTaskViewMoreMenu((menu) => {
-      withUniqueTag(menu, 'kbd', matchingText('Delete'), click);
-    });
-  }
-
-  function taskViewToggleTimer() {
+  async function taskViewOpenReminders() {
     withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
-      withUniqueClass(taskView, TIMER_CLASSES, all, click);
+      clickUnique(taskView, 'span', matchingText('Reminders'));
+    });
+  }
+
+  async function taskViewDelete() {
+    withTaskViewMoreMenu((menu) => {
+      clickUnique(menu, 'kbd', matchingText('Delete'));
+    });
+  }
+
+  async function taskViewToggleTimer() {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
+      clickUnique(taskView, TIMER_QUERY);
     });
   }
 
   // eslint-disable-next-line no-unused-vars
-  function taskViewActivity() {
+  async function taskViewActivity() {
     withTaskViewMoreMenu((menu) => {
-      withUniqueTag(menu, 'div', matchingText('View task activity'), click);
+      clickUnique(menu, 'div', matchingText('View task activity'));
     });
   }
 
   function withTaskViewMoreMenu(f) {
-    withUnique(document, TASK_VIEW_SELECTOR, (taskView) => {
+    withUnique(document, TASK_VIEW_SELECTOR, all, (taskView) => {
       let overflowMenu = getTaskViewMoreMenu();
       if (!overflowMenu) {
-        withUnique(taskView, 'button[aria-label="More actions"]', click);
+        clickUniqueRetrying(taskView, 'button[aria-label="More actions"]');
         overflowMenu = getTaskViewMoreMenu();
       }
       if (overflowMenu) {
@@ -1621,29 +1497,29 @@
   }
 
   function getTaskViewMoreMenu() {
-    return selectUnique(
+    return getUniqueRetrying(
         document, 'div.reactist_menulist[aria-label="More actions"]');
   }
 
-  function copyCursorOrSelectedUrls() {
+  async function copyCursorOrSelectedUrls() {
     setClipboard(selectedTasksOrCursorToText(getTaskUrl));
   }
 
-  function copyCursorOrSelectedTitles() {
+  async function copyCursorOrSelectedTitles() {
     setClipboard(selectedTasksOrCursorToText(getTaskTitle));
   }
 
-  function copyCursorOrSelectedAsMarkdown() {
+  async function copyCursorOrSelectedAsMarkdown() {
     setClipboard(selectedTasksOrCursorToText(getTaskMarkdown, '* '));
   }
 
-  function openRandomTask() {
+  async function openRandomTask() {
     const tasks = getTasks();
     setCursor(tasks[Math.floor(Math.random()*tasks.length)], 'scroll');
     openTaskView();
   }
 
-  function nextMenuListItem() {
+  async function nextMenuListItem() {
     withCurrentFocusedMenuListItem((focusedItem) => {
       let item = focusedItem;
       do {
@@ -1656,7 +1532,7 @@
     });
   }
 
-  function prevMenuListItem() {
+  async function prevMenuListItem() {
     withCurrentFocusedMenuListItem((focusedItem) => {
       let item = focusedItem;
       do {
@@ -1669,7 +1545,7 @@
     });
   }
 
-  function selectMenuListItem() {
+  async function selectMenuListItem() {
     withCurrentFocusedMenuListItem(click);
   }
 
@@ -1679,19 +1555,18 @@
                'straightforward to fix.');
   }
 
-  function noop() {}
+  async function noop() {}
 
   /*****************************************************************************
    * Utilities for manipulating the UI
    */
 
   function getViewContent() {
-    // If current experimental UI launches #content will no longer exist.
-    return selectUnique(document, 'main');
+    return getUnique(document, '#content');
   }
 
   function withViewContent(f) {
-    return withUnique(document, 'main', f);
+    return withUnique(document, '#content', all, f);
   }
 
   function toggleSelectTask(task) {
@@ -1700,7 +1575,7 @@
     const e = isMacOS ?
       new MouseEvent('click', {bubbles: true, metaKey: true}) :
       new MouseEvent('click', {bubbles: true, ctrlKey: true});
-    withUniqueClass(task, 'task_content', all, (content) => {
+    withUnique(task, '.task_content', all, (content) => {
       content.dispatchEvent(e);
     });
     task.dispatchEvent(e);
@@ -1887,7 +1762,7 @@
     content = content || getViewContent();
     // If there's an editor open to add a task, then set the cursor to the item
     // above.
-    const manager = getUniqueClass(content, 'manager');
+    const manager = getUnique(content, '.manager');
     if (manager) {
       const tasks = getTasks('no-collapsed', 'include-editors');
       const managerIndex =
@@ -2086,17 +1961,17 @@
   }
 
   function getFirstTaskIn(section) {
-    return getFirstClass(
+    return getFirst(
         section,
-        'task_list_item',
+        '.task_list_item',
         not(matchingClass('reorder_item')),
     );
   }
 
   function getLastTaskInSection(section) {
-    return getLastClass(
+    return getLast(
         section,
-        'task_list_item',
+        '.task_list_item',
         not(matchingClass('reorder_item')),
     );
   }
@@ -2220,10 +2095,10 @@
         return;
       }
       const popupWindow =
-            getUniqueClass(document, 'GB_window') ||
-            selectUnique(document, '[data-testid="modal-overlay"]') ||
+            getUnique(document, '.GB_window') ||
+            getUnique(document, '[data-testid="modal-overlay"]') ||
             // Search dropdown
-            selectUnique(document, '#quick_find > [role="presentation"]');
+            getUnique(document, '#quick_find > [role="presentation"]');
       if (popupWindow) {
         switchKeymap(POPUP_KEYMAP);
         return;
@@ -2244,7 +2119,7 @@
   }
 
   function checkTaskViewOpen() {
-    return selectUnique(document, 'div[data-item-detail-root]') !== null;
+    return getUnique(document, 'div[data-item-detail-root]') !== null;
   }
 
   // Registers a mutation observer that just observes modifications to its
@@ -2272,13 +2147,11 @@
   }
 
   function openMoreMenu() {
-    withUniqueTag(
+    clickUnique(
         document,
         'button',
-        matchingAction('multi-select-toolbar-overflow-menu-trigger'),
-        click,
-    );
-    const result = selectUnique(document, '.reactist_menulist[data-dialog]');
+        matchingAction('multi-select-toolbar-overflow-menu-trigger'));
+    const result = getUnique(document, '.reactist_menulist[data-dialog]');
     if (!result) {
       throw new Error('Failed to find "More" menu');
     }
@@ -2287,18 +2160,18 @@
 
   // Returns true if the task has children and is collapsed.
   function checkTaskCollapsed(task) {
-    return getUniqueClass(task, 'right');
+    return getUnique(task, '.right');
   }
 
   // Returns true if the task has children and is expanded.
   function checkTaskExpanded(task) {
-    return getUniqueClass(task, 'down');
+    return getUnique(task, '.down');
   }
 
-  // Click elements within the content which match the specified class.
+  // Click elements within the content which match the specified query.
   // Persistently clicks until the class can no longer be found. Used to
   // collapse / expand all items.
-  function repeatedlyClickArrows(cls) {
+  function repeatedlyClickArrows(query) {
     withViewContent((content) => {
       let i = 0;
       let clickedSomething = false;
@@ -2306,48 +2179,52 @@
         click(el);
         clickedSomething = true;
       };
-      let clickAll = null;
-      clickAll = () => {
+      let inner = null;
+      inner = () => {
         clickedSomething = false;
-        withClass(content, cls, doClick);
+        withAll(content, query, all, doClick);
         if (!clickedSomething) {
           return;
         }
         if (i < 5) {
           i++;
-          setTimeout(clickAll);
+          setTimeout(inner);
         } else {
           warn('Iteratively clicked arrows but they didn\'t all toggle');
         }
       };
-      clickAll();
+      inner();
     });
   }
 
   // Opens up the task's contextual menu and clicks an item via text match.
-  function clickTaskMenu(task, action, shouldScroll) {
-    withTaskMenuOpen(task, shouldScroll, () => {
-      withUnique(document, '[data-action-hint="' + action + '"]', click);
+  async function clickTaskMenu(task, action, shouldScroll) {
+    await withTaskMenuOpen(task, shouldScroll, async () => {
+      const element = await getUniqueRetrying(
+          document, '[data-action-hint="' + action + '"]');
+      click(element);
     });
   }
 
-  function withTaskMenuOpen(task, shouldScroll, f) {
+  async function withTaskMenuOpen(task, shouldScroll, f) {
     if (shouldScroll) {
-      withTaskMenuOpenImpl(task, f);
+      await withTaskMenuOpenImpl(task, f);
     } else {
-      withScrollIgnoredFor(400, () => {
-        withTaskMenuOpenImpl(task, f);
+      await new Promise((resolve) => {
+        withScrollIgnoredFor(400, async () => {
+          await withTaskMenuOpenImpl(task, f);
+          resolve();
+        });
       });
     }
   }
 
-  function withTaskMenuOpenImpl(task, f) {
-    withTaskHovered(task, () => {
+  async function withTaskMenuOpenImpl(task, f) {
+    await withTaskHovered(task, async () => {
       const query = 'button[data-action-hint="task-overflow-menu"]';
-      withUnique(task, query, (openMenu) => {
-        click(openMenu);
-        f();
-      });
+      const openMenu = await getUniqueRetrying(task, query);
+      click(openMenu);
+      await f();
     });
   }
 
@@ -2356,7 +2233,7 @@
   }
 
   function findScheduler() {
-    return getUniqueClass(document, 'scheduler');
+    return getUnique(document, '.scheduler');
   }
 
   function withScheduler(name, f) {
@@ -2657,7 +2534,7 @@
     const key = getTaskKey(task);
     task.dispatchEvent(new Event('mouseover'));
     try {
-      const handler = getUniqueClass(task, 'item_dnd_handle');
+      const handler = getUnique(task, '.item_dnd_handle');
       if (handler) {
         const handlerOffset = clientOffset(handler);
         const x = handlerOffset.x + handler.offsetWidth/2 - window.scrollX - 3;
@@ -2736,7 +2613,7 @@
 
   function clickTaskEdit(task) {
     storeExplicitEditingContext(task);
-    withUniqueClass(task, 'task_content', all, (content) => {
+    withUnique(task, '.task_content', all, (content) => {
       const options = {
         bubbles: true,
         cancelable: true,
@@ -2751,13 +2628,13 @@
     });
   }
 
-  function clickTaskSchedule(task) {
-    withTaskHovered(task, () => {
-      withUnique(task, '[data-action-hint="task-scheduler"]', click);
+  async function clickTaskSchedule(task) {
+    await withTaskHovered(task, async () => {
+      await clickUniqueRetrying(task, '[data-action-hint="task-scheduler"]');
     });
   }
 
-  function withTaskHovered(task, f) {
+  async function withTaskHovered(task, f) {
     const eventOptions = {
       bubbles: true,
       cancelable: true,
@@ -2766,97 +2643,94 @@
     };
     task.dispatchEvent(new MouseEvent('mouseover', eventOptions));
     try {
-      f();
+      await f();
     } finally {
       task.dispatchEvent(new MouseEvent('mouseout', eventOptions));
     }
   }
 
-  function blurSchedulerInput() {
-    enterDeferLastBinding();
-    if (IS_SAFARI) {
-      setTimeout(() => blurSchedulerInputImpl(50), 20);
-    } else {
-      setTimeout(() => blurSchedulerInputImpl(50), 0);
-    }
-  }
-
-  function blurSchedulerInputImpl(fuel) {
-    if (fuel <= 0) {
-      exitDeferLastBinding();
-      error('Expected to find scheduler after opening it.');
-      return;
-    }
-
-    const focusedEl = document.activeElement;
-    if (focusedEl && findParent(focusedEl, matchingClass('scheduler'))) {
-      try {
-        focusedEl.blur();
-        return;
-      } finally {
-        exitDeferLastBinding();
+  // Generic retry with delay between retries - returns a Promise
+  async function retryWithDelay(taskName, task, fuel = 100, delay = 10) {
+    while (fuel > 0) {
+      const result = task();
+      if (result) {
+        return result;
       }
+      await sleep(delay);
+      fuel -= 1;
     }
-
-    setTimeout(() => blurSchedulerInputImpl(fuel - 1), 10);
+    throw new Error('Ran out of retries while ' + taskName);
   }
 
-  function focusTimeInput() {
+  async function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function blurSchedulerInput() {
     enterDeferLastBinding();
-    setTimeout(() => focusTimeInputImpl(20), 0);
+    await sleep(IS_SAFARI ? 20 : 0);
+    try {
+      const focusedEl = await retryWithDelay(
+          'finding scheduler input',
+          () => {
+            const el = document.activeElement;
+            if (el && findParent(el, matchingClass('scheduler'))) {
+              return el;
+            }
+          },
+      );
+      focusedEl.blur();
+    } finally {
+      exitDeferLastBinding();
+    }
   }
 
-  // TODO: deduplicate this with other "persistent" retry code.
-  function focusTimeInputImpl(fuel) {
-    if (fuel <= 0) {
+  async function focusTimeInput() {
+    enterDeferLastBinding();
+    try {
+      const timepicker = await retryWithDelay(
+          'finding time input',
+          () => getById('scheduler-timepicker-input-element'),
+      );
+      timepicker.focus();
+    } finally {
       exitDeferLastBinding();
-      error('Expected to find time input after opening it.');
-      return;
-    }
-    const timepicker = getById('scheduler-timepicker-input-element');
-    if (timepicker) {
-      try {
-        warn('focusing ', timepicker);
-        timepicker.focus();
-      } finally {
-        exitDeferLastBinding();
-      }
-    } else {
-      setTimeout(() => focusTimeInputImpl(fuel - 1), 10);
     }
   }
 
   function clickTaskDone(task) {
-    withUniqueClass(task, ['item_checkbox', 'task_checkbox'], all, click);
+    clickUnique(task, '.item_checkbox, .task_checkbox');
   }
 
-  function addAboveTask(task) {
-    addAboveOrBelowTask(task, 'Add task above', 'task-overflow-menu-add-above');
+  async function addAboveTask(task) {
+    await addAboveOrBelowTask(
+        task, 'Add task above', 'task-overflow-menu-add-above');
   }
 
-  function addBelowTask(task) {
-    addAboveOrBelowTask(task, 'Add task below', 'task-overflow-menu-add-below');
+  async function addBelowTask(task) {
+    await addAboveOrBelowTask(
+        task, 'Add task below', 'task-overflow-menu-add-below');
   }
 
   // Common code implementing addAbove / addBelow.
-  function addAboveOrBelowTask(task, menuText, action) {
+  async function addAboveOrBelowTask(task, menuText, action) {
     if (task === null) {
       clickInlineAddTask();
     } else if (viewMode === 'agenda') {
       addToSectionContaining(task);
     } else if (viewMode === 'project') {
-      withTaskMenuOpen(task, true, () => {
-        const btn = selectUnique('[data-action-hint="' + action + '"]');
-        if (btn) {
-          click(btn);
-        } else {
+      await withTaskMenuOpen(task, true, async () => {
+        try {
+          await clickUniqueRetrying(
+              document, '[data-action-hint="' + action + '"]');
+        } finally {
           // If there is no matching menu item (such as when sorting
           // project by priority), then the task menu needs to be
           // explicitly closed.
           closeContextMenus();
         }
       });
-      const editor = getUniqueClass(document, 'task_editor');
+      const editor = await getUniqueRetrying(document, '.task_editor');
       if (editor) {
         scrollTaskEditorIntoView();
       } else {
@@ -2875,9 +2749,9 @@
     if (task) {
       section = getSection(task);
     } else if (viewMode === 'agenda') {
-      section = getFirstClass(document, 'section_day');
+      section = getFirst(document, '.section_day');
     } else {
-      section = getFirstClass(document, 'project_editor_instance');
+      section = getFirst(document, '.project_editor_instance');
     }
     if (!section) {
       warn(
@@ -2893,14 +2767,14 @@
     }
     if (viewMode === 'agenda' &&
         section.classList.contains('section_overdue')) {
-      section = getFirstClass(document, 'section_day');
+      section = getFirst(document, '.section_day');
     }
     clickInlineAddTask(section);
   }
 
   function clickInlineAddTask(section) {
-    const addButton = getUniqueClass(
-      section ? section : document, 'plus_add_button');
+    const addButton = getUnique(
+      section ? section : document, '.plus_add_button');
     if (addButton) {
       click(addButton);
       scrollTaskEditorIntoView();
@@ -2946,9 +2820,9 @@
     return null;
   }
 
-  function clickPriorityMenu(menu, level) {
-    withUniqueTag(
-        menu, 'li', matchingAction('task-actions-priority-' + level), click);
+  async function clickPriorityMenu(menu, level) {
+    await clickUniqueRetrying(
+        menu, 'li', matchingAction('task-actions-priority-' + level));
   }
 
   // eslint-disable-next-line no-unused-vars
@@ -2960,7 +2834,7 @@
 
   function notifyUser(msg) {
     withId('todoist_app', (appHolder) => {
-      withClass(appHolder, 'ts-note', (oldNote) => {
+      withAll(appHolder, '.ts-note', all, (oldNote) => {
         appHolder.removeChild(oldNote);
       });
       const close = div('ts-note-close');
@@ -3067,7 +2941,7 @@
     }
     const results = [];
     withViewContent((content) => {
-      withTag(content, 'li', (item) => {
+      withAll(content, 'li', all, (item) => {
         // Skip elements which don't correspond to tasks or sections
         const matches =
           !item.classList.contains('reorder_item') &&
@@ -3150,7 +3024,7 @@
   }
 
   function getTaskTitle(task) {
-    return getUniqueClass(task, ['content', 'task_content']).textContent;
+    return getUnique(task, '.content, .task_content').textContent;
   }
 
   function getTaskUrl(task) {
@@ -3202,7 +3076,7 @@
       return stripPriorityClass(priorityClass);
     } else {
       const taskCheckbox =
-            getUniqueClass(task, ['task_checkbox', 'item_checkbox']);
+            getUnique(task, '.task_checkbox, .item_checkbox');
       if (taskCheckbox) {
         priorityClass = findUnique(isPriorityClass, taskCheckbox.classList);
         if (priorityClass) {
@@ -3346,7 +3220,7 @@
     debug('Creating navigation shortcut tips');
     try {
       const navigateItems = [];
-      withTag(navigationContainer, 'li', (li) => {
+      withAll(navigationContainer, 'li', all, (li) => {
         // Ignore empty li elements, which happen for collapsed parent projects.
         if (li.childElementCount == 0) {
           return;
@@ -3370,9 +3244,9 @@
           keepGoing = true;
         } else if (matchingAttr('data-track', 'navigation|completed')(li)) {
           mustBeKeys = 'co';
-        } else if (selectUnique(li, 'a[aria-label="Add task"]')) {
+        } else if (getUnique(li, 'a[aria-label="Add task"]')) {
           mustBeKeys = 'q';
-        } else if (selectUnique(li, 'a[aria-label="Search"]')) {
+        } else if (getUnique(li, 'a[aria-label="Search"]')) {
           mustBeKeys = '/';
         } else {
           const rawText = getNavItemText(li).split('\n')[0];
@@ -3427,8 +3301,9 @@
           debug('Couldn\'t figure out text for', li);
         }
       });
-      withQuery(navigationContainer,
+      withAll(navigationContainer,
           '[data-expansion-panel-header=true]',
+          all,
           (summary) => {
             let mustBeKeys = null;
             const dataTrackAttr = summary.attributes['data-track'];
@@ -3456,36 +3331,37 @@
           });
 
       // Add labels and filters if that content is visible
-      withQuery(document, 'section[aria-label="Filters"]', (filtersHolder) => {
-        withTag(filtersHolder, 'li', (li) => {
-          let txt = '';
-          let initials = null;
-          nameSpan = getUniqueClass(li, 'simple_content');
+      withAll(document, 'section[aria-label="Filters"]', all,
+          (filtersHolder) => {
+            withAll(filtersHolder, 'li', all, (li) => {
+              let txt = '';
+              let initials = null;
+              nameSpan = getUnique(li, '.simple_content');
 
-          if (nameSpan) {
-            txt = preprocessItemText(nameSpan.textContent);
-            initials = getItemInitials(nameSpan.textContent);
-          } else {
-            warn('failed to get nav link text for', li);
-          }
+              if (nameSpan) {
+                txt = preprocessItemText(nameSpan.textContent);
+                initials = getItemInitials(nameSpan.textContent);
+              } else {
+                warn('failed to get nav link text for', li);
+              }
 
-          if (txt) {
-            navigateItems.push({
-              element: li,
-              text: txt,
-              initials,
+              if (txt) {
+                navigateItems.push({
+                  element: li,
+                  text: txt,
+                  initials,
+                });
+              } else {
+                error('Couldn\'t figure out text for', li);
+              }
             });
-          } else {
-            error('Couldn\'t figure out text for', li);
-          }
-        });
-      });
+          });
 
-      withQuery(document, 'section[aria-label="Labels"]', (labelsHolder) => {
-        withTag(labelsHolder, 'li', (li) => {
+      withAll(document, 'section[aria-label="Labels"]', all, (labelsHolder) => {
+        withAll(labelsHolder, 'li', all, (li) => {
           let txt = '';
           let initials = null;
-          nameSpan = getUniqueClass(li, 'simple_content');
+          nameSpan = getUnique(li, '.simple_content');
 
           if (nameSpan) {
             txt = preprocessItemText(nameSpan.textContent);
@@ -3845,15 +3721,16 @@
               if (el.classList.contains('expansion_panel__toggle') &&
                   !isFavoritesSection(el)) {
                 withNavigationContainer((navContainer) => {
-                  withClass(navContainer, 'expansion_panel__toggle', (ps) => {
-                    const isExpanded =
-                          ps.attributes['aria-expanded'].value === 'true';
-                    if (!sameElement(el)(ps) &&
-                        isExpanded &&
-                        !isFavoritesSection(ps)) {
-                      ps.click();
-                    }
-                  });
+                  withAll(navContainer, '.expansion_panel__toggle', all,
+                      (ps) => {
+                        const isExpanded =
+                              ps.attributes['aria-expanded'].value === 'true';
+                        if (!sameElement(el)(ps) &&
+                            isExpanded &&
+                            !isFavoritesSection(ps)) {
+                          ps.click();
+                        }
+                      });
                 });
               }
               // Ensure that the item is visible - first, uncollapsing
@@ -3863,8 +3740,7 @@
                   !matchingClass('collapse--entered')(collapseParent)) {
                 const collapseHeader = collapseParent.previousSibling;
                 if (collapseHeader) {
-                  withUniqueClass(
-                      collapseHeader, 'expansion_panel__toggle', all, click);
+                  clickUnique(collapseHeader, '.expansion_panel__toggle');
                 } else {
                   warn('Expected to find section collapse header, but did\'nt');
                 }
@@ -3879,7 +3755,7 @@
                 const curIndent = getIndentClass(elAbove);
                 if (curIndent < priorIndent) {
                   priorIndent = curIndent;
-                  const arr = getUniqueClass(elAbove, 'arrow');
+                  const arr = getUnique(elAbove, '.arrow');
                   if (arr && arr.classList.contains('right')) {
                     arrowsToClick.unshift(arr);
                   } else if (elAbove.style.display === 'none') {
@@ -3896,7 +3772,7 @@
                 click(arrowsToClick[i]);
               }
               // Uncollapse the target project, if necessary.
-              const arrow = getUniqueClass(el, 'arrow');
+              const arrow = getUnique(el, '.arrow');
               if (arrow) {
                 // If the user re-selects the same project they are already on,
                 // toggle folding.
@@ -3913,7 +3789,7 @@
                 }
               }
               // The li itself is not responsive to clicks.
-              let elToClick = getUniqueTag(el, 'a', all);
+              let elToClick = getUnique(el, 'a', all);
               elToClick = elToClick || el;
               click(elToClick);
               // Scroll the nav element into view, if needed. The
@@ -3953,7 +3829,7 @@
 
   function withNavScroll(f) {
     const scrollDiv =
-      selectUnique(
+      getUnique(
           document,
           'nav > div',
           isVerticallyScrollable);
@@ -4113,7 +3989,7 @@
   function getViewMode() {
     const agendaView =
           getById('agenda_view') ||
-          getUniqueClass(document, 'upcoming_view');
+          getUnique(document, '.upcoming_view');
     if (agendaView === null) {
       return 'project';
     } else {
@@ -4220,8 +4096,8 @@
       const oy = pageOffset(el).y - pageOffset(content).y;
       const cy = oy - content.scrollTop;
       const h = el.offsetHeight;
-      const overflowDiv = getUniqueClass(
-          content, 'action_head__overflow_actions');
+      const overflowDiv = getUnique(
+          content, '.action_head__overflow_actions');
       const overflowHeight = overflowDiv ? overflowDiv.offsetHeight : 0;
       if (skipCheck ||
           cy < el.offsetHeight + overflowHeight ||
@@ -4240,24 +4116,52 @@
 
   // Alias for querySelectorAll.
   function selectAll(parent, query) {
-    if (!query) {
-      // eslint-disable-next-line no-param-reassign
-      query = parent;
-      // eslint-disable-next-line no-param-reassign
-      parent = document;
-    }
     return parent.querySelectorAll(query);
   }
 
-  // Uses querySelectorAll, but requires a unique result.
-  function selectUnique(parent, query, predicate) {
-    return findUnique(predicate, selectAll(parent, query));
+  async function selectAllRetrying(
+      parent, query, predicate, fuel=100, delay=10) {
+    return await retryWithDelay(
+        'finding descendants matching ' + query,
+        () => {
+          const results = selectAll(parent, query, predicate);
+          if (results.length === 0) {
+            return null;
+          } else {
+            return results;
+          }
+        },
+        fuel,
+        delay);
+  }
+
+  async function getUniqueRetrying(
+      parent, query, predicate, fuel=100, delay=10) {
+    return await retryWithDelay(
+        'finding unique descendant matching ' + query,
+        () => getUnique(parent, query, predicate),
+        fuel,
+        delay);
+  }
+
+  async function clickUniqueRetrying(
+      parent, query, predicate, fuel=100, delay=10) {
+    click(await getUniqueRetrying(parent, query, predicate, fuel, delay));
+  }
+
+  async function clickAllRetrying(
+      parent, query, predicate, fuel=100, delay=10) {
+    const elements =
+      await selectAllRetrying(parent, query, predicate, fuel, delay);
+    for (const element of elements) {
+      click(element);
+    }
   }
 
   // Users querySelectorAll, requires unique result, and applies the
   // user's function to it.  Logs a warning if there isn't one.
-  function withUnique(parent, query, f) {
-    const result = selectUnique(parent, query);
+  function withUnique(parent, query, predicate, f) {
+    const result = getUnique(parent, query, predicate);
     if (result) {
       return f(result);
     } else {
@@ -4272,48 +4176,21 @@
   }
 
   // Uses querySelectorAll, and applies the provided function to each result.
-  function withQuery(parent, query, f) {
-    const els = selectAll(parent, query);
+  function withAll(parent, query, predicate, f) {
+    const els = selectAll(parent, query, predicate);
     for (let i = 0; i < els.length; i++) {
       f(els[i]);
     }
   }
 
   // Invokes the function for the matching id, or logs a warning.
-  function withId(id, f, ...rest) {
-    if (rest.length > 0) {
-      error('Too many arguments passed to withId', rest);
-    }
+  function withId(id, f) {
     const el = getById(id);
     if (el) {
       return f(el);
     } else {
       warn('Couldn\'t find ID', id);
       return null;
-    }
-  }
-
-  // Invokes the function for every descendant element that matches
-  // the class name.
-  function withClass(parent, cls, f, ...rest) {
-    if (rest.length > 0) {
-      error('Too many arguments passed to withClass', rest);
-    }
-    const els = parent.getElementsByClassName(cls);
-    for (let i = 0; i < els.length; i++) {
-      f(els[i]);
-    }
-  }
-
-  // Invokes the function for every descendant element that matches a
-  // tag name.
-  function withTag(parent, tag, f, ...rest) {
-    if (rest.length > 0) {
-      error('Too many arguments passed to withTag', rest);
-    }
-    const els = parent.getElementsByTagName(tag);
-    for (let i = 0; i < els.length; i++) {
-      f(els[i]);
     }
   }
 
@@ -4332,102 +4209,35 @@
     return null;
   }
 
-  // Returns first descendant that matches the specified class and
+  // Returns first descendant that matches the specified query and
   // predicate.
-  function getFirstClass(parent, cls, predicate) {
-    return findFirst(predicate, parent.getElementsByClassName(cls));
+  function getFirst(parent, query, predicate) {
+    return findFirst(predicate, selectAll(parent, query));
   }
 
-  // Returns last descendant that matches the specified class and
+  // Returns last descendant that matches the specified query and
   // predicate.
-  function getLastClass(parent, cls, predicate) {
-    return findLast(predicate, parent.getElementsByClassName(cls));
+  function getLast(parent, query, predicate) {
+    return findLast(predicate, selectAll(parent, query));
   }
 
   // Checks that there is only one descendant element that matches the
-  // class name and predicate, and returns it. Returns null if it is
-  // not found or not unique.
-  function getUniqueClass(parent, cls, predicate) {
-    let foundElements = [];
-    if (cls.constructor === Array) {
-      for (let i = 0; i < cls.length; i++) {
-        foundElements = foundElements.concat(
-            Array.from(parent.getElementsByClassName(cls[i])),
-        );
-      }
-    } else {
-      foundElements = parent.getElementsByClassName(cls);
-    }
-    return findUnique(predicate, foundElements);
-  }
-
-  // Checks that there is only one descendant element that matches the
-  // class name, and invokes the function on it. Logs a warning if
-  // there isn't exactly one.
-  function withUniqueClass(parent, cls, predicate, f) {
-    const result = getUniqueClass(parent, cls, predicate);
-    if (result) {
-      return f(result);
-    } else {
-      warn(
-          'Couldn\'t find unique descendant with class',
-          cls,
-          'and matching predicate, instead got',
-          result,
-      );
-      return null;
-    }
-  }
-
-  // Returns first descendant that matches the specified tag and
-  // predicate.
-  function getFirstTag(parent, tag, predicate) {
-    return findFirst(predicate, parent.getElementsByTagName(tag));
-  }
-
-  // Checks that there is only one descendant element that matches the
-  // tag and predicate, and returns it. Returns null if it is not
+  // query and predicate, and returns it. Returns null if it is not
   // found or not unique.
-  function getUniqueTag(parent, tag, predicate) {
-    return findUnique(predicate, parent.getElementsByTagName(tag));
+  function getUnique(parent, query, predicate) {
+    return findUnique(predicate, selectAll(parent, query));
   }
 
-  // Checks that there is only one descendant element that matches the
-  // tag, and invokes the function on it. Logs a warning if there
-  // isn't exactly one.
-  function withUniqueTag(parent, tag, predicate, f) {
-    const result = getUniqueTag(parent, tag, predicate);
-    if (result) {
-      return f(result);
-    } else {
-      warn(
-          'Couldn\'t find unique descendant with tag',
-          tag,
-          'and passing predicate',
-      );
-      return null;
-    }
+  // Finds a unique element matching the query and clicks it.
+  function clickUnique(parent, query, predicate) {
+    return withUnique(parent, query, predicate || all, click);
   }
 
-  // Given a predicate, returns a value if there is a unique child
-  // which matches it.
-  function getUniqueChild(parent, predicate) {
-    return findUnique(predicate, parent.children);
-  }
-
-  // Checks that there is only one child element that matches the
-  // predicate, and invokes the function on it. Logs a warning if
-  // there isn't exactly one.
-  //
-  // eslint-disable-next-line no-unused-vars
-  function withUniqueChild(parent, predicate, f) {
-    const result = getUniqueChild(parent, predicate);
-    if (result) {
-      return f(result);
-    } else {
-      warn('Couldn\'t find unique child and passing predicate');
-      return null;
-    }
+  // Finds all elements matching the query and clicks them.
+  function clickAll(parent, query, predicate) {
+    withAll(parent, query, predicate || all, (el) => {
+      click(el);
+    });
   }
 
   // Returns true if the map-like / set-like object is empty.
@@ -4934,7 +4744,7 @@
   }
 
   function isUpcomingView() {
-    return getUniqueClass(document, 'upcoming_view') !== null;
+    return getUnique(document, '.upcoming_view') !== null;
   }
 
   function disabledWithLazyLoading(actionName, f) {
@@ -4957,20 +4767,19 @@
       if (todoistModalIsOpen()) {
         return false;
       } else {
-        try {
-          // debug('Invoking action bound to', bind[0]);
-          const result = bind[1].apply(null, args);
-          // Default to stopping propagation.
-          return result === true;
-        } catch (ex) {
-          if (ex instanceof CursorRequired) {
-            warn('Shortcut for keys ' + bind[0] +
-                 ' requires a cursored task, but none found.');
-            return false;
-          } else {
-            throw ex;
+        (async () => {
+          try {
+            await bind[1].apply(null, args);
+          } catch (ex) {
+            if (ex instanceof CursorRequired) {
+              warn('Shortcut for keys ' + bind[0] +
+                ' requires a cursored task, but none found.');
+            } else {
+              throw ex;
+            }
           }
-        }
+        })();
+        return false;
       }
     };
   }
@@ -5062,14 +4871,14 @@
     const modalPredicate =
           not(or(matchingClass('quick_add'), matchingClass('detail_modal')));
     const uniqueModal =
-          getUniqueClass(document, 'reactist_modal_box', modalPredicate);
+          getUnique(document, '.reactist_modal_box', modalPredicate);
     if (uniqueModal) {
       // Special handling for the modal that appears when confirming
       // task discard (esc after q), and for the deletion confirmation
       // modal.
       let cancelButton = null;
       let acceptButton = null;
-      withClass(uniqueModal, 'ist_button', (el) => {
+      withAll(uniqueModal, '.ist_button', all, (el) => {
         if (el.innerText === 'Cancel') {
           cancelButton = el;
         } else if (el.innerText === 'Discard task' ||
@@ -5166,10 +4975,10 @@
       window.originalTodoistScrollTo = window.scrollTo;
     }
 
-    overwriteKeyHandlers();
-
     // Initialize mousetrap.
     mousetrap = new TodoistShortcutsMousetrap(document);
+
+    overwriteKeyHandlers();
 
     // Register key bindings with mousetrap.
     registerKeybindings(DEFAULT_KEYMAP, KEY_BINDINGS);
@@ -5207,7 +5016,7 @@
 
   function initializeWhenContentAppears(gas) {
     const content = getViewContent();
-    if (gas > 0 && content === null && window['TodoistShortcutsMousetrap']) {
+    if (gas > 0 && (content === null || !window['TodoistShortcutsMousetrap'])) {
       info('Waiting for #content and mousetrap before initializing');
       setTimeout(() => initializeWhenContentAppears(gas - 1), 25);
     } else {
@@ -5222,5 +5031,5 @@
     }
   }
 
-  initializeWhenContentAppears(200);
+  initializeWhenContentAppears(2000);
 })();

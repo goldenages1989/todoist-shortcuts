@@ -1,5 +1,18 @@
 # todoist-shortcuts changelog
 
+## Version 203
+
+* Fixed a bunch of brokenness related to Todoist no longer making
+  immediate UI changes for mouse clicks. Probably imperfect.
+
+* Fixed issues with it sometimes not initializing.
+
+* Removed support for sorting, as the UI for that totally changed and
+  so a new implementation would need to be written. See [#272][].
+
+[#272]: https://github.com/mgsloan/todoist-shortcuts/issues/272
+
+
 ## Version 202
 
 * New `>` shortcut for deadline now defocuses the text input so that
